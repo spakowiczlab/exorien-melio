@@ -1,0 +1,262 @@
+---
+title: "volcano plot"
+author: "Caroline Wheeler"
+date: "7/26/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(DESeq2)
+library(tidyverse)
+library(ggplot2)
+library(ggrepel)
+library(dplyr)
+```
+
+read in data 
+```{r}
+taxa <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_RA-with-taxonomy.csv")
+clin <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE) %>%
+  dplyr::rename("sample" = Sample_ID,
+         "IO.responder" = Response) %>%
+  filter(Cancer_Type == "Melanoma") %>%
+  dplyr::select(sample, IO.responder) 
+```
+
+filter to iorig/exorien overlap and remove human
+```{r}
+taxa <- taxa %>%
+  filter(taxa$sample %in% clin$sample,
+         taxa$species != "s__Homo sapiens")
+
+clin <- clin %>% 
+  remove_rownames %>% 
+  column_to_rownames(var="sample") %>%
+  mutate(IO.responder = ifelse(IO.responder == 0, "Non-Responder", "Responder"))
+```
+
+# make histogram to evaluate which power of 10 to multiply by
+```{r}
+ggplot(taxa, aes(-log10(exo.ra))) + geom_histogram(binwidth = 0.5)
+ggplot(taxa, aes(-log10(exo.ra*1e9))) + geom_histogram(binwidth = 0.5)
+```
+
+function to get count tables
+```{r}
+write_desd <- function(taxa, lev){
+  desd <- taxa %>%
+    dplyr::select("sample", all_of(lev), "exo.ra") %>%
+    mutate(count = round(exo.ra*1e9))%>%
+    dplyr::select(-"exo.ra") 
+  
+  return(desd)
+}
+```
+
+get counts
+```{r}
+dom <- write_desd(taxa, "domain") %>%
+  add_count(sample, domain, wt=count) %>%
+  dplyr::select(-"count") %>%
+  distinct() %>%
+  spread(sample, n) %>%
+  remove_rownames %>%
+  column_to_rownames(var="domain")
+
+king <- write_desd(taxa, "kingdom") %>%
+  add_count(sample, kingdom, wt=count) %>%
+  dplyr::select(-"count") %>%
+  distinct() %>%
+  spread(sample, n) %>%
+  remove_rownames %>%
+  column_to_rownames(var="kingdom")
+
+phyl <- write_desd(taxa, "phylum") %>%
+  add_count(sample, phylum, wt=count) %>%
+  dplyr::select(-"count") %>%
+  distinct() %>%
+  spread(sample, n) %>%
+  remove_rownames %>%
+  column_to_rownames(var="phylum")
+
+class <- write_desd(taxa, "class") %>%
+  add_count(sample, class, wt=count) %>%
+  dplyr::select(-"count") %>%
+  distinct() %>%
+  spread(sample, n) %>%
+  remove_rownames %>%
+  column_to_rownames(var="class")
+
+ord <- write_desd(taxa, "order") %>%
+  add_count(sample, order, wt=count) %>%
+  dplyr::select(-"count") %>%
+  distinct() %>%
+  spread(sample, n) %>%
+  remove_rownames %>%
+  column_to_rownames(var="order")
+
+fam <- write_desd(taxa, "family") %>%
+  add_count(sample, family, wt=count) %>%
+  dplyr::select(-"count") %>%
+  distinct() %>%
+  spread(sample, n) %>%
+  remove_rownames %>%
+  column_to_rownames(var="family")
+
+gen <- write_desd(taxa, "genus") %>%
+  add_count(sample, genus, wt=count) %>%
+  dplyr::select(-"count") %>%
+  distinct() %>%
+  spread(sample, n) %>%
+  remove_rownames %>%
+  column_to_rownames(var="genus")
+
+spec <- write_desd(taxa, "species") %>%
+  add_count(sample, species, wt=count) %>%
+  dplyr::select(-"count") %>%
+  distinct() %>%
+  spread(sample, n) %>%
+  remove_rownames %>%
+  column_to_rownames(var="species")
+```
+
+function to run DESeq
+```{r}
+run_deseq <- function(desd, meta, lev){
+  ord <- rownames(meta)
+  desd <- desd[, ord]
+  dds <- DESeqDataSetFromMatrix(countData = desd,
+                                colData = meta,
+                                design = ~ IO.responder)
+  
+  # makes no difference because factor levels are decided alphabetically 
+  #dds$IO.responder <- factor(dds$IO.responder, levels = c("Non-Responder", "Responder"))
+  
+  dds <- DESeq(dds)
+  res <- results(dds)
+  
+  #same result as above line
+  #res <- results(dds, contrast = c("IO.responder", "Responder", "Non-Responder"))
+  
+  pd <- res$log2FoldChange
+  
+  resPlot <- data.frame(res) %>% mutate(threshold = padj < 0.05)
+  
+  resPlot$level <- lev
+  return(resPlot)
+}
+```
+
+```{r}
+king_rp <- run_deseq(king, clin, "kingdom")
+phyl_rp <- run_deseq(phyl, clin, "phylum")
+clas_rp <- run_deseq(class, clin, "class")
+ord_rp <- run_deseq(ord, clin, "order")
+fam_rp <- run_deseq(fam, clin, "family")
+gen_rp <- run_deseq(gen, clin, "genus")
+spec_rp <- run_deseq(spec, clin, "species")
+```
+
+```{r}
+resPlot <- rbind(king_rp, phyl_rp, clas_rp, ord_rp, fam_rp, gen_rp, spec_rp)
+```
+
+limits
+```{r}
+low <- -1
+high <-1
+p <- 0.05
+```
+
+```{r}
+resPlot$delabel <- NA
+resPlot <- resPlot %>%
+  mutate(delabel = ifelse(pvalue < p & (log2FoldChange < low | log2FoldChange > high), row.names(resPlot), NA))
+```
+
+custom groupings
+```{r}
+resPlot <- resPlot %>%
+  mutate(.,'Taxonomic Grouping' = with(.,case_when(
+    delabel == "k__Fungi" ~ "Fungi",
+    delabel == "k__unclassified-p__Fusobacteria" ~ "Fusobacteria",
+    delabel == "k__unclassified-s__Mollivirus sibericum" ~ "Viruses",
+    delabel == "p__Ascomycota" ~ "Fungi",
+    delabel == "p__unclassified-s__Mollivirus sibericum" ~ "Viruses",
+    delabel == "s__Candida orthopsilosis" ~ "Fungi",
+    delabel == "s__Debaryomyces hansenii" ~ "Fungi",
+    delabel == "s__Delftia lacustris" ~ "Proteobacteria",
+    delabel == "s__Enterobacter hormaechei" ~ "Proteobacteria",
+    delabel == "s__Fusobacterium gonidiaformans" ~ "Fusobacteria",
+    delabel == "s__Fusobacterium nucleatum" ~ "Fusobacteria",
+    delabel == "s__Mannheimia sp. USDA-ARS-USMARC-1261" ~ "Proteobacteria",
+    delabel == "s__Mollivirus sibericum" ~ "Viruses",
+    delabel == "s__Moraxella osloensis" ~ "Proteobacteria",
+    delabel == "s__Myroides profundi" ~ "Bacteroidetes",
+    delabel == "s__Nocardia mangyaensis" ~ "Actinobacteria", 
+    delabel == "s__Porphyromonas asaccharolytica" ~ "Bacteroidetes",
+    delabel == "s__Pseudomonas fluorescens" ~ "Proteobacteria",
+    delabel == "s__Snyder-Theilen feline sarcoma virus" ~ "Viruses",
+    delabel == "s__Theileria annulata" ~ "Apicomplexa",
+    delabel == "s__Proteus virus Isfahan" ~ "Viruses",
+    delabel == "s__Plasmodium sp. gorilla clade G2" ~ "Apicomplexa",
+    delabel == "p__Uroviricota" ~ "Viruses",
+    delabel == "o__unclassified-s__Mollivirus sibericum" ~ "Viruses", 
+    delabel == "o__Caudovirales" ~ "Viruses",
+    delabel == "k__Heunggongvirae" ~ "Viruses",
+    delabel == "g__unclassified-s__Mollivirus sibericum" ~ "Viruses",
+    delabel == "g__Mannheimia" ~ "Proteobacteria",
+    delabel == "g__Gorganvirus" ~ "Viruses",
+    delabel == "g__Debaryomyces" ~ "Fungi",
+    delabel == "f__unclassified-s__Mollivirus sibericum" ~ "Viruses",
+    delabel == "f__Siphoviridae" ~ "Viruses",
+    delabel == "c__unclassified-s__Mollivirus sibericum" ~ "Viruses",
+    delabel == "c__Caudoviricetes" ~ "Viruses"
+  )))
+```
+
+```{r}
+saveRDS(resPlot, file ="../data/deseqResults.RDS")
+```
+
+```{r}
+highlight_df <- resPlot %>% 
+  dplyr::filter(pvalue < p & (log2FoldChange < low | log2FoldChange > high))
+```
+
+```{r fig.height=4, fig.width=7}
+g <- ggplot(resPlot,aes(x=log2FoldChange, y=-log10(pvalue), label=delabel)) + 
+  geom_text_repel() +
+  theme(legend.key.size = unit(1, 'cm'), legend.title = element_text(size=18), legend.text = element_text(size=18), axis.text =element_text(size = 18), axis.title=element_text(size=18)) +
+  geom_point(colour="honeydew4") +
+  geom_point(data=highlight_df, aes(x=log2FoldChange, y=-log10(pvalue), label=delabel, color = `Taxonomic Grouping`),size=3) +
+  scale_color_manual(values=c("red3", "cyan4", "darkgreen", "darkgoldenrod2", "salmon2", "cornflowerblue", "deeppink4")) +
+  geom_vline(xintercept=c(low, high), linetype="dotted") +
+  geom_hline(yintercept=1, linetype="dotted")
+g
+```
+```{r}
+ggsave(plot = g, file = "../figures/fig2_volcano2.png", dev = "png", width = 12, height = 10, dpi = 600)
+```
+
+
+grant version
+```{r}
+g <- ggplot(resPlot,aes(x=log2FoldChange, y=-log10(pvalue), label=delabel)) + 
+  geom_text_repel() +
+  theme(legend.key.size = unit(1, 'cm'), legend.title = element_text(size=10), legend.text = element_text(size=10), axis.text =element_text(size = 10), axis.title=element_text(size=10)) +
+  geom_point(colour="honeydew4") +
+  geom_point(data=highlight_df, aes(x=log2FoldChange, y=-log10(pvalue), label=delabel, color = `Taxonomic Grouping`),size=3) +
+  scale_color_manual(values=c("red3", "cyan4", "darkgreen", "darkgoldenrod2", "salmon2", "cornflowerblue", "deeppink4")) +
+  geom_vline(xintercept=c(low, high), linetype="dotted") +
+  geom_hline(yintercept=1, linetype="dotted") +
+  theme_bw()
+
+g
+```
+```{r}
+ggsave(plot = g, file = "../figures/grantVersion_volcano.png", dev = "png", width = 6, height = 5, dpi = 600)
+ggsave(plot = g, file = "../figures/grantVersion_volcano.svg", dev = "svg", width = 6, height = 5, dpi = 600)
+```

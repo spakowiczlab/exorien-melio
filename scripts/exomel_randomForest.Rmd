@@ -1,0 +1,122 @@
+---
+title: "exomel_fig3"
+author: "Caroline Wheeler"
+date: "9/20/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(randomForest)
+library(ggplot2)
+#library(pROC)
+library(ROCR)
+```
+
+load data
+```{r}
+# read in clinical data containing response
+clin <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE) %>%
+  dplyr::rename("sample" = Sample_ID) %>%
+  filter(Cancer_Type == "Melanoma") %>%
+  arrange(sample)
+
+# read in relative abundance data
+taxa <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_RA-with-taxonomy.csv")
+  
+taxa.wide <- taxa %>%
+  dplyr::select(sample, microbe, exo.ra) %>%
+  spread(key = 'microbe', value = 'exo.ra') %>%
+  dplyr::filter(sample %in% clin$sample) %>%
+  arrange(sample)
+
+# check that RA and clin data line up
+identical(taxa.wide$sample, clin$sample)
+
+# read in prevalence data
+
+# read in expression data
+
+
+
+# combined
+# response <- clin %>%
+#   select(sample, Response)
+# 
+# combo <- merge(taxa.wide, response)
+```
+
+### randomForest with RA on species level ###
+
+Split into testing and training data
+```{r}
+testn <- round(.2 * nrow(response))
+set.seed(12345)
+testsamps <- sample(response$sample, testn)
+
+# exo with microbes
+train.exo <- taxa.wide %>%
+  dplyr::filter(!sample %in% testsamps)
+test.exo <- taxa.wide %>%
+  dplyr::filter(sample %in% testsamps)
+
+# all clin vars
+clin.train <- response %>%
+  dplyr::filter(!sample %in% testsamps)
+clin.test <- response %>%
+  dplyr::filter(sample %in% testsamps)
+```
+
+## model
+```{r}
+model.training <- randomForest(x = train.exo[,-1], y = as.factor(clin.train$Response))
+test.preds <- predict(model.training, test.exo[,-1])
+```
+
+results
+```{r, eval = F}
+# Model function call
+print(model.training)
+# Check variable importance
+varImpPlot(model.training)
+# Prediction confusion matrix
+table(observed = clin.test$Response, predicted = test.preds)
+```
+
+```{r}
+prediction_for_roc_curve <- predict(model.training,test.exo[,-1],type="prob")
+
+pred <- prediction(prediction_for_roc_curve[,2],true_values)
+pred 
+perf <- performance(pred, "tpr", "fpr")
+perf
+
+
+plot(perf,
+     col='blue')
+
+plot(perf,
+     avg='vertical',
+     spread.estimate='stderror',
+     lwd=3,main='Vertical averaging + 1 standard error',
+     col='blue')
+
+```
+
+### RandomForest with RA on genus level ###
+
+filter taxa to genus level
+```{r}
+gen.wide <- taxa %>%
+  dplyr::select(sample, genus, exo.ra) %>%
+  distinct() %>%
+  spread(key = 'genus', value = 'exo.ra') %>%
+  dplyr::filter(sample %in% clin$sample) %>%
+  arrange(sample)
+
+# check that RA and clin data line up
+identical(taxa.wide$sample, clin$sample)
+```
+

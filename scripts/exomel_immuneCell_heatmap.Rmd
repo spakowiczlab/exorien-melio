@@ -1,0 +1,177 @@
+---
+title: "immune cells and microbes"
+author: "Caroline Wheeler"
+date: "8/26/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(reshape2)
+library(Hmisc)
+library(stats)
+library(tidyverse)
+library(resample)
+```
+
+read in data
+```{r}
+clin <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE) %>%
+  dplyr::rename("sample" = Sample_ID) %>%
+  filter(Cancer_Type == "Melanoma")
+
+cells <- read.csv("/fs/ess/PAS1695/projects/exorien/data/cibersort/2022-03-16_immunecell_composition.csv") %>%
+   dplyr::select(-X, -P.value, -Correlation, -RMSE) %>%
+  filter(sample %in% clin$sample)
+
+mics <- readRDS("../data/deseqResults.RDS") %>%
+  filter(level == "species" & !is.na(delabel))
+
+taxa <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_RA-with-taxonomy.csv") %>%
+    filter(sample %in% clin$sample,
+           species %in% mics$delabel) %>%
+  select(sample, species, exo.ra) %>%
+  mutate(microbe = substr(species, 4, nchar(species))) %>%
+  select(-species)
+
+taxa_wide <- dcast(taxa, sample ~ microbe, value.var = "exo.ra")
+
+cellsMics <- merge(taxa_wide, cells) %>%
+  remove_rownames %>% 
+  column_to_rownames(var="sample")
+
+```
+
+## Run for manuscript version of figs ###
+## Go to line 98 for grant version ##
+
+```{r}
+cormatrix = rcorr(as.matrix(cellsMics), type='spearman')
+cordata = melt(cormatrix$r) %>%
+  rename("Immune Cells" = Var1,
+         "Microbe" = Var2) %>%
+  filter(`Immune Cells` %in% colnames(cells),
+         Microbe %in% taxa$microbe)
+```
+
+heatmap
+```{r}
+ggplot(cordata, aes(x=`Immune Cells`, y=Microbe, fill=value)) + 
+  geom_tile(color = "black") +
+    scale_fill_gradient2(low = "#075AFF",
+                       mid = "#FFFFCC",
+                       high = "#FF0000") +
+  coord_fixed() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1))
+
+#ggsave("../figures/exomel_heatmap_micImmune.png", dev = "png", width = 8, height = 6, dpi = 600)
+```
+bi-cluster
+```{r}
+d <- cordata
+
+# Reshape data as matrix
+cells <- tidyr::pivot_wider(d, names_from = "Immune Cells", values_from = "value")
+cells <- as.matrix(cells[, -1]) # -1 to omit categories from matrix
+
+taxa <- tidyr::pivot_wider(d, names_from = "Microbe", values_from = "value")
+taxa <- as.matrix(taxa[, -1]) # -1 to omit categories from matrix
+
+# Cluster based on euclidean distance
+clust <- hclust(dist(t(cells)))
+clust2 <- hclust(dist(t(taxa)))
+
+ggplot(d, aes(x=`Immune Cells`, y=Microbe, fill=value)) +
+ geom_tile(color = "black") +
+    scale_fill_gradient2(low = "#075AFF",
+                       mid = "#FFFFCC",
+                       high = "#FF0000") +
+  coord_fixed() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) + 
+  scale_x_discrete(limits = colnames(cells)[clust$order]) +
+  scale_y_discrete(limits = colnames(taxa)[clust2$order])
+
+ggsave("../figures/exomel_heatmap_micImmune.png", dev = "png", width = 8, height = 6, dpi = 600)
+```
+
+## RUN FOR GRANT VERSION OF FIGS ##
+### w/ TIMEx data
+
+read in data
+```{r}
+timex <- read.csv("/fs/ess/PAS1695/projects/exorien/data/ORIEN_TIMEX.csv") %>%
+  mutate(sample = substr(Input.Sample, 0, 8)) %>%
+  filter(sample %in% clin$sample) %>%
+  select(-Input.Sample)
+
+timexMics <- merge(taxa_wide, timex) %>%
+  remove_rownames %>% 
+  column_to_rownames(var="sample")
+```
+
+correlation matrix
+```{r}
+timcormatrix = rcorr(as.matrix(timexMics), type='spearman')
+timcordata = melt(timcormatrix$r) %>%
+  rename("Signature" = Var1,
+         "Microbe" = Var2) %>%
+  filter(`Signature` %in% colnames(timex),
+         Microbe %in% taxa$microbe)
+```
+
+calc variance and filer to top 10
+```{r}
+# varianceTopTen <- function(matrix, cutoff){
+#   x <- acast(matrix, Signature ~ Microbe)
+#   vars <- colVars(x) %>%
+#     rename("variance" = "colVars(x)") 
+# }
+
+x <- acast(timcordata, Signature ~ Microbe)
+x <- t(x)
+vars <- as.data.frame(colVars(x)) %>%
+    rename("variance" = "colVars(x)") 
+
+vars <- vars %>%
+  top_n(10)
+
+timcordata <- timcordata %>%
+  filter(Signature %in% rownames(vars))
+```
+
+```{r}
+d <- timcordata
+
+# Reshape data as matrix
+timex <- tidyr::pivot_wider(d, names_from = "Signature", values_from = "value")
+timex <- as.matrix(timex[, -1]) # -1 to omit categories from matrix
+
+taxa <- tidyr::pivot_wider(d, names_from = "Microbe", values_from = "value")
+taxa <- as.matrix(taxa[, -1]) # -1 to omit categories from matrix
+
+# Cluster based on euclidean distance
+clust <- hclust(dist(t(timex)))
+clust2 <- hclust(dist(t(taxa)))
+
+ggplot(d, aes(x=`Signature`, y=Microbe, fill=value)) +
+ geom_tile(color = "black") +
+    scale_fill_gradient2(low = "#075AFF",
+                       mid = "#FFFFCC",
+                       high = "#FF0000") +
+  coord_fixed() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) + 
+  scale_x_discrete(limits = colnames(timex)[clust$order]) +
+  scale_y_discrete(limits = colnames(taxa)[clust2$order]) +
+  xlab("") +
+  ylab("") + 
+  theme(text = element_text(size = 10), legend.position = "top") 
+
+ggsave("../figures/grantVersion_exomel_heatmap_micImmune.svg", dev = "svg", width = 4, height = 6, dpi = 600)
+
+```
+
+
+
+

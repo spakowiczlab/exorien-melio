@@ -1,0 +1,59 @@
+---
+title: "effect size"
+author: "Caroline Wheeler"
+date: "8/18/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(ggplot2)
+```
+
+load data
+```{r}
+data <- readRDS("../data/deseqResults.RDS")
+```
+
+```{r}
+data <- data %>%
+  filter(level == "species" & !is.na(delabel))
+
+new.rownames <- substr(rownames(data), 4, nchar(rownames(data)))
+rownames(data) <- new.rownames
+```
+
+
+```{r}
+data %>%
+  ggplot(aes(x=log2FoldChange, y=reorder(rownames(data), log2FoldChange), fill=`Taxonomic Grouping`)) +
+  geom_bar(stat = "identity") + 
+  theme_bw() +
+  ylab("Species") +
+  xlab("Effect Size") +
+  scale_fill_manual(values=c("red3", "cyan4", "darkgreen", "darkgoldenrod2", "salmon2", "cornflowerblue", "deeppink4")) +
+  theme(legend.key.size = unit(1, 'cm'), legend.title = element_text(size=18), legend.text = element_text(size=18), axis.text =element_text(size = 18), axis.title=element_text(size=18))
+
+ggsave(file = "../figures/fig1_effectSize.png", dev = "png", width = 12, height = 10, dpi = 600)
+```
+grant version
+# need to run grant version of exomel_immuneCell_heatmap.RmD to get clustering order of species 
+```{r}
+data %>%
+  ggplot(aes(x=log2FoldChange, y=rownames(data), fill=`Taxonomic Grouping`)) +
+  geom_bar(stat = "identity") + 
+  theme_bw() +
+  ylab("Species") +
+  xlab("Effect Size") +
+  scale_fill_manual(values=c("red3", "cyan4", "darkgreen", "darkgoldenrod2", "salmon2", "cornflowerblue", "deeppink4")) +
+  theme(legend.key.size = unit(1, 'cm'), legend.title = element_text(size=6), legend.text = element_text(size=6), axis.text =element_text(size = 10), axis.title=element_text(size=10)) +
+   theme(legend.position="none", axis.ticks.y=element_blank(), axis.text.y=element_blank()) +
+  scale_y_discrete(limits = colnames(taxa)[clust2$order])  +
+  ylab("")
+
+
+ggsave(file = "../figures/grantVersion_effectSize.png", dev = "png", width = 6, height = 8, dpi = 600)
+```
+

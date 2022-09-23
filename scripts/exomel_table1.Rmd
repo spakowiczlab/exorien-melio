@@ -1,0 +1,58 @@
+---
+title: "exomel clinical info"
+author: "Caroline Wheeler"
+date: "7/26/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(tableone)
+```
+
+```{r}
+response <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE) %>%
+  rename("RNASeq" = Sample_ID) %>%
+  filter(Cancer_Type == "Melanoma")
+
+clin <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_ClinicalMolLinkage_V4.csv") %>%
+  rename("AvatarKey" = ORIENAvatarKey)
+
+extra_clin <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_PatientMaster_V4.csv")
+
+clin <- merge(response, clin)
+clin <- merge(clin, extra_clin)
+```
+
+```{r}
+table(clin$Response)
+table(clin$Sex)
+table(clin$Age.At.Specimen.Collection)
+```
+
+```{r}
+clin <- clin %>%
+  mutate(Response = ifelse(Response == 0, "Non-Responder", "Responder"),
+         Age = case_when(Age.At.Specimen.Collection >= 80  & Age.At.Specimen.Collection <= 89.99 ~ '80-89',
+                         Age.At.Specimen.Collection >= 70  & Age.At.Specimen.Collection <= 79.99 ~ '70-79',
+                         Age.At.Specimen.Collection >= 60  & Age.At.Specimen.Collection <= 69.99 ~ '60-69',
+                         Age.At.Specimen.Collection >= 50  & Age.At.Specimen.Collection <= 59.99 ~ '50-59',
+                         Age.At.Specimen.Collection >= 40  & Age.At.Specimen.Collection <= 49.99 ~ '40-49',
+                         Age.At.Specimen.Collection >= 30  & Age.At.Specimen.Collection <= 39.99 ~ '30-39',
+                         Age.At.Specimen.Collection >= 20  & Age.At.Specimen.Collection <= 29.99 ~ '20-29',
+                         Age.At.Specimen.Collection >= 10  & Age.At.Specimen.Collection <= 19.99 ~ '10-19',))
+
+```
+
+```{r}
+variables_listed <- c("Response", "Age", "Sex", "Race")
+
+cat_vars <- c("Response","Age", "Sex", "Race")
+
+rcc <- CreateTableOne(vars= variables_listed, data= clin, factorVars = cat_vars)
+tab <- print(rcc, noSpaces = TRUE, printToggle = FALSE, quote = FALSE, test = FALSE)
+tab
+```
+
