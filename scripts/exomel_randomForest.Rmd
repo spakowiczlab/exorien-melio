@@ -13,6 +13,7 @@ library(randomForest)
 library(ggplot2)
 #library(pROC)
 library(ROCR)
+library(gdata)
 ```
 
 load data
@@ -22,6 +23,9 @@ clin <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", hea
   dplyr::rename("sample" = Sample_ID) %>%
   filter(Cancer_Type == "Melanoma") %>%
   arrange(sample)
+
+response <- clin %>%
+  select(sample, Response)
 
 # read in relative abundance data
 taxa <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_RA-with-taxonomy.csv")
@@ -36,16 +40,50 @@ taxa.wide <- taxa %>%
 identical(taxa.wide$sample, clin$sample)
 
 # read in prevalence data
+prev <- read_table("/fs/ess/PAS1695/projects/exorien/data/k2bout.txt") %>%
+    dplyr::filter(sample %in% clin$sample) %>%
+    arrange(sample)
 
-# read in expression data
+# check sample order 
+identical(prev$sample, clin$sample)
+  
+# read in expression data - select 'Roh Immune Score'
+expr <- read.csv("/fs/ess/PAS1695/projects/exorien/data/exomel_tmesig.csv") %>%
+  select(sample, Roh_Immune_Score) %>%
+  arrange(sample)
 
+identical(expr$sample, clin$sample)
 
-
-# combined
-# response <- clin %>%
-#   select(sample, Response)
-# 
+#  combined
 # combo <- merge(taxa.wide, response)
+```
+
+######## Functions to make the model and predictions ######
+```{r}
+getROC <- function(train, clin.train, test, clin.test){
+  model.training <- randomForest(x = train[,-1, drop=FALSE], y = as.factor(clin.train$Response))
+  test.preds <- predict(model.training, test[,-1, drop=FALSE])
+  
+  print(model.training)
+  # Check variable importance
+  varImpPlot(model.training)
+  # Prediction confusion matrix
+  table(observed = clin.test$Response, predicted = test.preds)
+  
+  prediction_for_roc_curve <- predict(model.training,test[,-1, drop=FALSE],type="prob")
+  pred <- prediction(prediction_for_roc_curve[,2], clin.test$Response)
+  perf <- performance(pred, "tpr", "fpr")
+  
+  auc_ROCR <- performance(pred, measure = "auc")
+  print(auc_ROCR)
+  auc <- auc_ROCR@y.values[[1]]
+  print(auc)
+  
+  df <- data.frame(FalsePositive=c(perf@x.values[[1]]),
+                    TruePositive=c(perf@y.values[[1]]))
+  
+  return(df)
+}
 ```
 
 ### randomForest with RA on species level ###
@@ -69,41 +107,17 @@ clin.test <- response %>%
   dplyr::filter(sample %in% testsamps)
 ```
 
-## model
+## model and plot ROC
 ```{r}
-model.training <- randomForest(x = train.exo[,-1], y = as.factor(clin.train$Response))
-test.preds <- predict(model.training, test.exo[,-1])
+spec_ra <- getROC(train.exo, clin.train, test.exo, clin.test)
+
+spec_ra_plot <- ggplot(spec_ra, aes(x=FalsePositive, y=TruePositive)) + 
+  theme_bw() +
+  geom_smooth(se = FALSE, color="red3")
+
+spec_ra_plot
 ```
 
-results
-```{r, eval = F}
-# Model function call
-print(model.training)
-# Check variable importance
-varImpPlot(model.training)
-# Prediction confusion matrix
-table(observed = clin.test$Response, predicted = test.preds)
-```
-
-```{r}
-prediction_for_roc_curve <- predict(model.training,test.exo[,-1],type="prob")
-
-pred <- prediction(prediction_for_roc_curve[,2],true_values)
-pred 
-perf <- performance(pred, "tpr", "fpr")
-perf
-
-
-plot(perf,
-     col='blue')
-
-plot(perf,
-     avg='vertical',
-     spread.estimate='stderror',
-     lwd=3,main='Vertical averaging + 1 standard error',
-     col='blue')
-
-```
 
 ### RandomForest with RA on genus level ###
 
@@ -111,12 +125,201 @@ filter taxa to genus level
 ```{r}
 gen.wide <- taxa %>%
   dplyr::select(sample, genus, exo.ra) %>%
-  distinct() %>%
+  group_by(sample, genus) %>%
+  summarize(exo.ra = sum(exo.ra)) %>%
   spread(key = 'genus', value = 'exo.ra') %>%
   dplyr::filter(sample %in% clin$sample) %>%
   arrange(sample)
 
 # check that RA and clin data line up
-identical(taxa.wide$sample, clin$sample)
+identical(gen.wide$sample, clin$sample)
 ```
+
+Split genus RA into testing and training data
+```{r}
+# exo with microbes
+train.gen <- gen.wide %>%
+  dplyr::filter(!sample %in% testsamps)
+test.gen <- gen.wide %>%
+  dplyr::filter(sample %in% testsamps)
+```
+
+model and plot ROC
+```{r}
+gen_ra <- getROC(train.gen, clin.train, test.gen, clin.test)
+
+gen_ra_plot <- ggplot(gen_ra, aes(x=FalsePositive, y=TruePositive)) + 
+  theme_bw() +
+  geom_smooth(se = FALSE, color="darkgreen")
+
+gen_ra_plot
+```
+
+### RandomForest with RA on family level ###
+```{r}
+fam.wide <- taxa %>%
+  dplyr::select(sample, family, exo.ra) %>%
+  group_by(sample, family) %>%
+  summarize(exo.ra = sum(exo.ra)) %>%
+  spread(key = 'family', value = 'exo.ra') %>%
+  dplyr::filter(sample %in% clin$sample) %>%
+  arrange(sample)
+
+# check that RA and clin data line up
+identical(fam.wide$sample, clin$sample)
+```
+
+Split fam RA into testing and training data
+```{r}
+# exo with microbes
+train.fam <- fam.wide %>%
+  dplyr::filter(!sample %in% testsamps)
+test.fam <- fam.wide %>%
+  dplyr::filter(sample %in% testsamps)
+```
+
+model and plot ROC
+```{r}
+fam_ra <- getROC(train.fam, clin.train, test.fam, clin.test)
+
+fam_ra_plot <- ggplot(fam_ra, aes(x=FalsePositive, y=TruePositive)) + 
+  theme_bw() +
+  geom_smooth(se = FALSE, color="blue")
+
+fam_ra_plot
+```
+
+
+
+### RandomForest with prevalence on species level ###
+Split genus RA into testing and training data
+```{r}
+# exo with microbes
+train.prev <- prev %>%
+  dplyr::filter(!sample %in% testsamps)
+test.prev <- prev %>%
+  dplyr::filter(sample %in% testsamps)
+```
+
+model and plot ROC
+```{r}
+prev_roc <- getROC(train.prev, clin.train, test.prev, clin.test)
+
+prev_plot <- ggplot(prev_roc, aes(x=FalsePositive, y=TruePositive)) + 
+  theme_bw() +
+  geom_smooth(se = FALSE, color="blue")
+
+prev_plot
+```
+### RandomForest with Roh Immune Score ###
+```{r}
+train.expr <- expr %>%
+  dplyr::filter(!sample %in% testsamps)
+test.expr <- expr %>%
+  dplyr::filter(sample %in% testsamps)
+```
+
+```{r}
+expr_roc <- getROC(train.expr, clin.train, test.expr, clin.test)
+
+expr_plot <- ggplot(expr_roc, aes(x=FalsePositive, y=TruePositive)) + 
+  theme_bw() +
+  geom_smooth(se = FALSE, color="red3")
+
+expr_plot
+```
+
+### RandomForest with RA order ###
+```{r}
+ord.wide <- taxa %>%
+  dplyr::select(sample, order, exo.ra) %>%
+  group_by(sample, order) %>%
+  summarize(exo.ra = sum(exo.ra)) %>%
+  spread(key = 'order', value = 'exo.ra') %>%
+  dplyr::filter(sample %in% clin$sample) %>%
+  arrange(sample)
+
+# check that RA and clin data line up
+identical(ord.wide$sample, clin$sample)
+```
+
+Split fam RA into testing and training data
+```{r}
+# exo with microbes
+train.ord <- ord.wide %>%
+  dplyr::filter(!sample %in% testsamps)
+test.ord <- ord.wide %>%
+  dplyr::filter(sample %in% testsamps)
+```
+
+model and plot ROC
+```{r}
+ord_ra <- getROC(train.ord, clin.train, test.ord, clin.test)
+
+ord_ra_plot <- ggplot(ord_ra, aes(x=FalsePositive, y=TruePositive)) + 
+  theme_bw() +
+  geom_smooth(se = FALSE, color="blue")
+
+ord_ra_plot
+```
+
+#### Roh Immune Score + Genus #####
+```{r}
+rf_expr <- randomForest(x = train.expr[,-1, drop=FALSE], y = as.factor(clin.train$Response))
+rf_gen <- randomForest(x = train.gen[,-1, drop=FALSE], y = as.factor(clin.train$Response))
+
+rf_combined <- randomForest::combine(rf_expr, rf_gen)
+```
+
+```{r}
+
+```
+
+### Layer ROC curves ###
+```{r}
+temp <- combine(combo_ra, ord_ra, expr_roc, prev_roc, spec_ra, gen_ra, fam_ra)
+
+combined <- ggplot(temp, aes(x=FalsePositive, y=TruePositive, color=source)) + 
+  theme_bw() +
+  geom_smooth(se = FALSE)
+
+combined
+
+ggsave(filename = "../figures/combined_ROC.png", plot = combined, width = 28, height = 10, dpi = 400)
+```
+
+
+
+
+Try other expressions
+```{r}
+expr <- read.csv("/fs/ess/PAS1695/projects/exorien/data/exomel_tmesig.csv") %>%
+  select(sample, MitoScore) %>%
+  arrange(sample)
+
+train.expr <- expr %>%
+  dplyr::filter(!sample %in% testsamps)
+test.expr <- expr %>%
+  dplyr::filter(sample %in% testsamps)
+
+expr_roc <- getROC(train.expr, clin.train, test.expr, clin.test)
+
+expr_plot <- ggplot(expr_roc, aes(x=FalsePositive, y=TruePositive)) + 
+  theme_bw() +
+  geom_smooth(se = FALSE, color="red3")
+
+expr_plot
+```
+
+
+```{r}
+data(iris)
+rf1 <- randomForest(Species ~ ., iris, ntree=50, norm.votes=FALSE)
+rf2 <- randomForest(Species ~ ., iris, ntree=50, norm.votes=FALSE)
+rf3 <- randomForest(Species ~ ., iris, ntree=50, norm.votes=FALSE)
+rf.all <- randomForest::combine(rf1, rf2, rf3)
+print(rf.all)
+```
+
+
 
