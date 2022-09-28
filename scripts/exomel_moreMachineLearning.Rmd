@@ -1,0 +1,79 @@
+---
+title: "more machine learning"
+author: "Caroline Wheeler"
+date: "9/28/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+```
+
+
+load data
+```{r}
+# read in clinical data containing response
+clin <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE) %>%
+  dplyr::rename("sample" = Sample_ID) %>%
+  filter(Cancer_Type == "Melanoma") %>%
+  arrange(sample)
+
+response <- clin %>%
+  select(sample, Response)
+
+# read in relative abundance data
+taxa <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_RA-with-taxonomy.csv")
+
+# selecting genus as it performs best
+taxa.wide <- taxa %>%
+  dplyr::select(sample, genus, exo.ra) %>%
+  group_by(sample, genus) %>%
+  summarize(exo.ra = sum(exo.ra)) %>%
+  spread(key = 'genus', value = 'exo.ra') %>%
+  dplyr::filter(sample %in% clin$sample) %>%
+  arrange(sample)
+
+# check that RA and clin data line up
+identical(taxa.wide$sample, clin$sample)
+
+# didn't perform well
+# read in prevalence data
+# prev <- read_table("/fs/ess/PAS1695/projects/exorien/data/k2bout.txt") %>%
+#     dplyr::filter(sample %in% clin$sample) %>%
+#     arrange(sample)
+
+# check sample order 
+# identical(prev$sample, clin$sample)
+  
+# read in expression data - select 5 well perdforming expressions
+expr <- read.csv("/fs/ess/PAS1695/projects/exorien/data/exomel_tmesig.csv") %>%
+  select(sample, Rooney_Immune_Cytolytic, Cytotoxic, IFNg_18, Huang_NRS, TIP_Hot) %>%
+  arrange(sample)
+
+identical(expr$sample, clin$sample)
+
+#  combined
+# combo <- merge(taxa.wide, response)
+```
+
+Split into testing and training data
+```{r}
+testn <- round(.2 * nrow(response))
+set.seed(12345)
+testsamps <- sample(response$sample, testn)
+
+# exo with microbes
+train.exo <- taxa.wide %>%
+  dplyr::filter(!sample %in% testsamps)
+test.exo <- taxa.wide %>%
+  dplyr::filter(sample %in% testsamps)
+
+# all clin vars
+clin.train <- response %>%
+  dplyr::filter(!sample %in% testsamps)
+clin.test <- response %>%
+  dplyr::filter(sample %in% testsamps)
+```
+
