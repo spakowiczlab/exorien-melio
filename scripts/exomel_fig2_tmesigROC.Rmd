@@ -1,0 +1,103 @@
+---
+title: "figure 2"
+author: "Caroline Wheeler"
+date: "10/19/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(tmesig)
+library(ggplot2)
+library(randomForest)
+library(ROCR)
+library(gdata)
+```
+
+# read in data
+```{r}
+# read in clinical data containing response
+response <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE) %>%
+  dplyr::rename("sample" = Sample_ID) %>%
+  filter(Cancer_Type == "Melanoma") %>%
+  arrange(sample) %>%
+  select(sample, Response)
+  
+expr <- read.csv("/fs/ess/PAS1695/projects/exorien/data/exomel_tmesig.csv") %>%
+  select(-X) %>%
+  arrange(sample)
+
+# check that expr and clin data line up
+identical(expr$sample, clin$sample)
+```
+
+######## Function to make the model and predictions ######
+```{r}
+getROC <- function(train, clin.train, test, clin.test){
+  model.training <- randomForest(x = train[,-1, drop=FALSE], y = as.factor(clin.train$Response))
+  test.preds <- predict(model.training, test[,-1, drop=FALSE])
+  
+  print(model.training)
+  # Check variable importance
+  varImpPlot(model.training)
+  # Prediction confusion matrix
+  table(observed = clin.test$Response, predicted = test.preds)
+  
+  prediction_for_roc_curve <- predict(model.training,test[,-1, drop=FALSE],type="prob")
+  pred <- prediction(prediction_for_roc_curve[,2], clin.test$Response)
+  perf <- performance(pred, "tpr", "fpr")
+  
+  auc_ROCR <- performance(pred, measure = "auc")
+  print(auc_ROCR)
+  auc <- auc_ROCR@y.values[[1]]
+  print(auc)
+  
+  df <- data.frame(FalsePositive=c(perf@x.values[[1]]),
+                    TruePositive=c(perf@y.values[[1]]))
+  
+  return(df)
+}
+```
+
+#### tmesig output to predict response ####
+
+# split into testing and training
+```{r}
+testn <- round(.2 * nrow(response))
+set.seed(12345)
+testsamps <- sample(response$sample, testn)
+
+# all clin vars
+clin.train <- response %>%
+  dplyr::filter(!sample %in% testsamps)
+clin.test <- response %>%
+  dplyr::filter(sample %in% testsamps)
+
+# expr
+train.expr <- expr %>%
+  dplyr::filter(!sample %in% testsamps)
+test.expr <- expr %>%
+  dplyr::filter(sample %in% testsamps)
+```
+
+```{r}
+expr_roc <- getROC(train.expr, clin.train, test.expr, clin.test)
+```
+
+
+```{r}
+expr_plot <- ggplot(expr_roc, aes(x=FalsePositive, y=TruePositive)) + 
+  theme_bw() +
+  geom_smooth(se = FALSE, color="red3") +
+  xlab("Specifity") +
+  ylab("Sensitivity") +
+  annotate(geom="text", x=0.375, y=0.8, label="AUC = 0.875",
+              color="red3", size=8) 
+
+expr_plot
+
+ggsave("../figures/tmesig_ROC.png", plot = expr_plot, width = 8, height = 8, dpi = 400)
+```
+

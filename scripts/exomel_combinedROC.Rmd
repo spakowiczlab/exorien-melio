@@ -1,0 +1,130 @@
+---
+title: "tmesig + microbes"
+author: "Caroline Wheeler"
+date: "10/19/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(tmesig)
+library(ggplot2)
+library(randomForest)
+library(ROCR)
+library(gdata)
+```
+
+# read in data
+```{r}
+# read in clinical data containing response
+response <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE) %>%
+  dplyr::rename("sample" = Sample_ID) %>%
+  filter(Cancer_Type == "Melanoma") %>%
+  arrange(sample) %>%
+  select(sample, Response)
+  
+
+# read in relative abundance data
+taxa <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_RA-with-taxonomy.csv")
+
+# selecting genus as it performs best
+taxa.wide <- taxa %>%
+  dplyr::select(sample, genus, exo.ra) %>%
+  group_by(sample, genus) %>%
+  summarize(exo.ra = sum(exo.ra)) %>%
+  spread(key = 'genus', value = 'exo.ra') %>%
+  dplyr::filter(sample %in% clin$sample) %>%
+  arrange(sample)
+
+# check that RA and clin data line up
+identical(taxa.wide$sample, clin$sample)
+```
+
+######## Function to make the model and predictions ######
+```{r}
+getROC <- function(train, clin.train, test, clin.test){
+  model.training <- randomForest(x = train[,-1, drop=FALSE], y = as.factor(clin.train$Response))
+  test.preds <- predict(model.training, test[,-1, drop=FALSE])
+  
+  print(model.training)
+  # Check variable importance
+  varImpPlot(model.training)
+  # Prediction confusion matrix
+  table(observed = clin.test$Response, predicted = test.preds)
+  
+  prediction_for_roc_curve <- predict(model.training,test[,-1, drop=FALSE],type="prob")
+  pred <- prediction(prediction_for_roc_curve[,2], clin.test$Response)
+  perf <- performance(pred, "tpr", "fpr")
+  
+  auc_ROCR <- performance(pred, measure = "auc")
+  print(auc_ROCR)
+  auc <- auc_ROCR@y.values[[1]]
+  print(auc)
+  
+  df <- data.frame(FalsePositive=c(perf@x.values[[1]]),
+                    TruePositive=c(perf@y.values[[1]]))
+  
+  return(df)
+}
+```
+
+Split into testing and training data
+```{r}
+testn <- round(.2 * nrow(response))
+set.seed(12345)
+testsamps <- sample(response$sample, testn)
+
+# exo with microbes
+train.exo <- taxa.wide %>%
+  dplyr::filter(!sample %in% testsamps)
+test.exo <- taxa.wide %>%
+  dplyr::filter(sample %in% testsamps)
+
+# all clin vars
+clin.train <- response %>%
+  dplyr::filter(!sample %in% testsamps)
+clin.test <- response %>%
+  dplyr::filter(sample %in% testsamps)
+```
+
+## model
+```{r}
+gen_ra <- getROC(train.exo, clin.train, test.exo, clin.test)
+```
+
+## plot ROC
+```{r}
+gen_ra_plot <- ggplot(gen_ra, aes(x=FalsePositive, y=TruePositive)) + 
+  theme_bw() +
+  geom_smooth(se = FALSE, color="darkgreen") +
+    xlab("Specifity") +
+  ylab("Sensitivity") +
+  annotate(geom="text", x=0.5, y=0.7, label="AUC = 0.8125",
+              color="darkgreen", size=8) 
+
+gen_ra_plot
+```
+# combined
+
+# all plots
+```{r}
+temp <- combine(gen_ra, expr_roc)
+
+combined <- ggplot(temp, aes(x=FalsePositive, y=TruePositive, color=source)) + 
+  theme_bw() +
+  geom_smooth(se = FALSE) +
+  scale_color_manual(values=c("darkgreen", "red3")) +
+  xlab("Specifity") +
+  ylab("Sensitivity") +
+  annotate(geom="text", x=0.75, y=0.7, label="AUC = 0.875",
+              color="red3", size=8) + 
+  annotate(geom="text", x=0.75, y=0.6, label="AUC = 0.8125",
+              color="darkgreen", size=8)
+
+combined
+
+ggsave("../figures/all_ROC.png", plot = combined, width = 8, height = 8, dpi = 400)
+```
+
