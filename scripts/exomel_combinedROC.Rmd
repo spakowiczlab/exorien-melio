@@ -123,18 +123,21 @@ temp <- combine(gen_ra, expr_roc, comb_roc)
 combined <- ggplot(temp, aes(x=FalsePositive, y=TruePositive, color=source)) + 
   theme_bw() +
   geom_smooth(se = FALSE) +
-  scale_color_manual(values=c("salmon2", "cornflowerblue", "deeppink4")) +
+  scale_color_manual(values=c("darkgoldenrod2", "cornflowerblue", "deeppink4")) +
   xlab("Specifity") +
   ylab("Sensitivity") +
   annotate(geom="text", x=0.75, y=0.6, label="AUC = 0.8750",
               color="cornflowerblue", size=8) + 
   annotate(geom="text", x=0.75, y=0.5, label="AUC = 0.8125",
-              color="salmon2", size=8) +
+              color="darkgoldenrod2", size=8) +
     annotate(geom="text", x=0.75, y=0.7, label="AUC = 0.8958",
               color="deeppink4", size=8)
 
 combined
 
-ggsave("../figures/all_ROC.png", plot = combined, width = 8, height = 8, dpi = 400)
+ggsave("../figures/all_ROC.png", plot = combined, width = 13, height = 8, dpi = 400)
+ggsave("../figures/all_ROC.svg", plot = combined, width = 10, height = 8, dpi = 400)
+ggsave("../figures/all_ROC_wider.svg", plot = combined, width = 12, height = 8, dpi = 400)
+ggsave("../figures/all_ROC_widest.svg", plot = combined, width = 13, height = 8, dpi = 400)
 ```
 
