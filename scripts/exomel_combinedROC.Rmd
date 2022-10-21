@@ -35,11 +35,11 @@ taxa.wide <- taxa %>%
   group_by(sample, genus) %>%
   summarize(exo.ra = sum(exo.ra)) %>%
   spread(key = 'genus', value = 'exo.ra') %>%
-  dplyr::filter(sample %in% clin$sample) %>%
+  dplyr::filter(sample %in% response$sample) %>%
   arrange(sample)
 
 # check that RA and clin data line up
-identical(taxa.wide$sample, clin$sample)
+identical(taxa.wide$sample, response$sample)
 ```
 
 ######## Function to make the model and predictions ######
@@ -107,21 +107,31 @@ gen_ra_plot <- ggplot(gen_ra, aes(x=FalsePositive, y=TruePositive)) +
 gen_ra_plot
 ```
 # combined
+```{r}
+train.comb <- merge(train.exo, train.expr)
+test.comb <- merge(test.exo, test.expr)
+
+# model
+comb_roc <- getROC(train.comb, clin.train, test.comb, clin.test)
+```
+
 
 # all plots
 ```{r}
-temp <- combine(gen_ra, expr_roc)
+temp <- combine(gen_ra, expr_roc, comb_roc)
 
 combined <- ggplot(temp, aes(x=FalsePositive, y=TruePositive, color=source)) + 
   theme_bw() +
   geom_smooth(se = FALSE) +
-  scale_color_manual(values=c("darkgreen", "red3")) +
+  scale_color_manual(values=c("salmon2", "cornflowerblue", "deeppink4")) +
   xlab("Specifity") +
   ylab("Sensitivity") +
-  annotate(geom="text", x=0.75, y=0.7, label="AUC = 0.875",
-              color="red3", size=8) + 
-  annotate(geom="text", x=0.75, y=0.6, label="AUC = 0.8125",
-              color="darkgreen", size=8)
+  annotate(geom="text", x=0.75, y=0.6, label="AUC = 0.8750",
+              color="cornflowerblue", size=8) + 
+  annotate(geom="text", x=0.75, y=0.5, label="AUC = 0.8125",
+              color="salmon2", size=8) +
+    annotate(geom="text", x=0.75, y=0.7, label="AUC = 0.8958",
+              color="deeppink4", size=8)
 
 combined
 
