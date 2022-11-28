@@ -101,3 +101,21 @@ expr_plot
 #ggsave("../figures/tmesig_ROC.png", plot = expr_plot, width = 8, height = 8, dpi = 400)
 ```
 
+loop
+```{r}
+tmesigs <- colnames(expr)[-1]
+
+for (sig in tmesigs) {
+  x <- expr %>% select(sample, sig)
+  
+  train.expr <- x %>%
+    dplyr::filter(!sample %in% testsamps)
+  test.expr <- x %>%
+    dplyr::filter(sample %in% testsamps)
+  
+  print(colnames(x)[-1])  
+ getROC(train.expr, clin.train, test.expr, clin.test)
+  
+}
+```
+

@@ -121,6 +121,11 @@ timcordata = melt(timcormatrix$r) %>%
          Microbe %in% taxa$microbe)
 ```
 
+save matrix
+```{r}
+write.csv(timcordata, "../data/timexMic_corrMatrix.csv")
+```
+
 calc variance and filer to top 10
 ```{r}
 # varianceTopTen <- function(matrix, cutoff){
