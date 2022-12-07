@@ -1,0 +1,131 @@
+---
+title: "bugsigdb"
+author: "Caroline Wheeler"
+date: "12/1/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(bugsigdbr)
+library(tidyverse)
+library(ontologyIndex)
+```
+
+```{r}
+bsdb <- importBugSigDB()
+colnames(bsdb)
+conds <- as.data.frame(table(bsdb$Condition))
+sites <- as.data.frame(table(bsdb$`Body site`))
+```
+Subsetting
+```{r}
+obese <- bsdb %>%
+  filter(Condition == "obesity",
+         `Host species` == "Homo sapiens")
+
+colrec <- bsdb %>%
+  filter(Condition == "colorectal cancer",
+          `Host species` == "Homo sapiens")
+```
+
+Get signatures
+```{r}
+sigs <- getSignatures(colrec)
+
+# signatures based on the full taxonomic classification in MetaPhlAn format
+mp.sigs <- getSignatures(colrec, tax.id.type = "metaphlan")
+
+#taxonmic name only
+tn.sigs <- getSignatures(colrec, tax.id.type = "taxname")
+
+#genus level
+gn.sigs <- getSignatures(colrec, 
+                         tax.id.type = "taxname",
+                         tax.level = "genus",
+                         exact.tax.level = FALSE)
+```
+
+Ontology    
+```{r}
+efo <- getOntology("efo")
+cancer <- subsetByOntology(bsdb,
+                        column = "Condition",
+                        term = "cancer",
+                        ontology = efo)
+
+table(cancer[,"Condition"])
+
+mp.sigs.cancer <- getSignatures(cancer, tax.id.type = "metaphlan")
+```
+
+```{r}
+colrec_sigs <- plyr::ldply(gn.sigs, rbind)
+```
+
+
+### IO response group ####
+```{r}
+io <- cancer %>%
+  filter(`Group 1 name` == "Responders" | `Group 1 name` == "Progressive -Free- Survival more than 30 days")
+
+io_mics <- getSignatures(io, tax.id.type = "taxname")
+io_mics <- plyr::ldply(io_mics, rbind)
+
+io_mics_met <- getSignatures(io, tax.id.type = "metaphlan")
+io_mics_met <- plyr::ldply(io_mics_met, rbind)
+```
+
+Why is Prevotella in both??
+
+Responders:
+Akkermansia muciniphila
+Eubacterium sp.
+Lachnospiraceae
+Erysipelotrichaceae
+Intestinimonas
+Alistipes finegoldii
+Bacteroides sp.
+Cloacibacillus porcorum
+Enterococcus faecium
+Prevotella
+Eubacterium sp.
+Alistipes
+Akkermansia muciniphila
+Intestinimonas
+Bacteroides nordii
+Bacteroides xylanisolvens
+Blautia
+Lachnospiraceae
+Firmicutes
+Eubacteriales
+Ruminococcus
+Clostridium sp.
+Flavonifractor plautii
+Bacteroides caccae
+Ruminococcus sp.
+
+Non-Responders:
+Prevotella
+Clostridium sp.
+Eubacteriales
+Enterocloster bolteae
+Blautia
+Bacteroides clarus
+Proteobacteria
+Bacteroides nordii
+Parabacteroides distasonis
+Staphylococcus haemolyticus
+Corynebacterium aurimucosum
+Parabacteroides distasonis
+Eubacteriales
+Anaerotruncus colihominis
+Lachnospiraceae
+Erysipelotrichaceae
+
+Met melanoma and more sigs available on bugsigdbr website....
+
+
+
+
