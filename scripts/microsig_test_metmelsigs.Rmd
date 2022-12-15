@@ -1,0 +1,261 @@
+---
+title: "microSig"
+author: "Caroline Wheeler"
+date: "2022-12-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(randomForest)
+library(ggplot2)
+library(ROCR)
+library(gdata)
+```
+
+read in data
+```{r}
+# read in metmel sigs
+sigs <- read.csv("../data/signatures-filtered-metastatic-melanoma_20221207.csv")
+
+response <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE) %>%
+  dplyr::rename("sample" = Sample_ID,
+         "IO.responder" = Response) %>%
+  filter(Cancer_Type == "Melanoma") %>%
+  dplyr::select(sample, IO.responder) 
+
+# read in microbe data from exorien-melio 
+taxa_all <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_RA-with-taxonomy.csv") %>%
+  filter(sample %in% response$sample)
+  #mutate(Taxonomy = ifelse(grepl("d__Bacteria", Taxonomy), sub('d','k',Taxonomy), Taxonomy))
+
+taxa <- taxa_all %>%
+  select(sample, species, exo.ra) %>%
+  rename(microbe = species)
+```
+
+get relAbun at all levels
+```{r}
+# @level is a string containing the taxonomic level we want to calculate relative abundances for
+get_ra <- function(level){
+  df <- taxa_all %>%
+    group_by(sample, !!! rlang::syms(level)) %>%
+    summarize(exo.ra = sum(exo.ra)) %>%
+    rename(microbe = level)
+  
+  return(df)
+}
+
+dom <- get_ra("domain")
+king <- get_ra("kingdom")
+phyl <- get_ra("phylum")
+class <- get_ra("class")
+ord<- get_ra("order")
+fam <- get_ra("family")
+gen <- get_ra("genus")
+
+taxa <- rbind(taxa, dom, king, phyl, class, ord, fam, gen)
+```
+
+get individual signatures for testing
+```{r}
+#689
+frankelSig_up <- sub("^.+\\|", "", unlist(strsplit(sigs$MetaPhlAn.taxon.names[5],",")))
+
+#679
+matsonSig_up <- sub("^.+\\|", "", unlist(strsplit(c(sigs$MetaPhlAn.taxon.names[6],sigs$MetaPhlAn.taxon.names[7]), ",")))
+matsonSig_down <- sub("^.+\\|", "", unlist(strsplit(sigs$MetaPhlAn.taxon.names[8],",")))
+
+#688
+gopaSig_up <- sub("^.+\\|", "", unlist(strsplit(sigs$MetaPhlAn.taxon.names[3] ,",")))
+gopaSig_down <- sub("^.+\\|", "",unlist(strsplit(sigs$MetaPhlAn.taxon.names[4], ",")))
+
+#691
+windSig_up <- sub("^.+\\|", "", unlist(strsplit(sigs$MetaPhlAn.taxon.names[1] ,",")))
+windSig_down <- sub("^.+\\|", "", unlist(strsplit(sigs$MetaPhlAn.taxon.names[2] ,",")))
+```
+
+
+How do we handle a signature that only has up or down? Need to alter function to accommodate for both
+could take an empty character vector, with checks for if empty
+
+also need to consider handling if no microbes are present in the dataset
+
+Calculate signature score
+```{r}
+# Function to calculate a microbe signature given a set of up and down regulated microbes and the relAbun of sample data
+#
+# @sig_up character vector listing microbes in given signature that are up-regulated
+# @sig_down character vector listing microbes in given signature that are down-regulated
+# @taxa df containing columns 'sample', 'microbe', 'exo.ra'
+#
+getMicroSigScore <- function(sig_up, sig_down, taxa){
+  # z score transform relAbun
+  df <- taxa %>%
+    group_by(sample) %>%
+    mutate(z_score = scale(exo.ra))
+  
+  upMics <- df %>%
+    filter(microbe %in% sig_up)
+  
+  upTotal <- length(unique(upMics$microbe))
+  
+  upMics <- upMics %>%  
+    group_by(sample) %>%
+    summarize(tempUp = sum(exo.ra))
+  
+  downMics <- df %>%
+    filter(microbe %in% sig_down)
+  
+  downTotal <- length(unique(downMics$microbe))
+  
+  downMics <- downMics %>%
+    group_by(sample) %>%
+    summarize(tempDown = sum(exo.ra))
+  
+  df <- merge(upMics, downMics, by = "sample") %>%
+    mutate(score = (tempUp - tempDown)*(1/(upTotal + downTotal))) %>%
+    select(sample, score)
+  
+  return(df)
+}
+```
+
+get signature scores for sigs from literature
+```{r}
+wind <- getMicroSigScore(windSig_up, windSig_down, taxa) %>%
+  rename(wind = score)
+
+gopa <- getMicroSigScore(gopaSig_up, gopaSig_down, taxa) %>%
+  rename(gopa = score)
+
+# currently returns emtpy df - check presence of microbes
+#matson <- getMicroSigScore(matsonSig_up, matsonSig_down, taxa) %>%
+#  rename(matson = score)
+
+paa_up <- c("s__Clostridium sp. UNK-MGS-6", "s__Firmicutes bacterium CAG 41", "s__Coprobacillus cateniformis", "s__Clostridia bacterium UC5-1-2G4","s__Streptococcus dysgalactiae", "s__Acidaminococcus sp. HPA0509", "s__Roseburia sp.CAG-303", "s__Butyrivibrio_sp. AE2032", "s__Coprobacillus sp. 29-1", "s__Coprobacillus sp. D6")
+
+paa_down <- c("s__Alistipes sp. CAG-435", "s__Fusobacterium hwasookii", "s__Leuconostoc sp. DORA-2", "s__Paenibacillus lentimorbus", "s__Fusobacterium sp. oral taxon 370", "s__Alcanivorax hongdengensis", "s__Arthrobacter sp. LS16", "s__Bacillus sp. 5B6", "s__Bacillus velezensis", "s__Fusobacterium sp. OBRC1")
+
+paa <- getMicroSigScore(paa_up, paa_down, taxa) %>%
+  rename(paa = score)
+```
+
+combine signatures into one table
+```{r}
+df_list <- list(wind, gopa, paa)
+microSigs <- df_list %>% reduce(full_join, by='sample')
+```
+
+testing area
+```{r}
+unique (grep("taxon", taxa$microbe, value=TRUE))
+```
+
+Test signature predictive power
+
+######## Function to make the model and predictions ######
+```{r}
+getROC <- function(train, clin.train, test, clin.test){
+  model.training <- randomForest(x = train[,-1, drop=FALSE], y = as.factor(clin.train$Response))
+  test.preds <- predict(model.training, test[,-1, drop=FALSE])
+  
+  print(model.training)
+  # Check variable importance
+  varImpPlot(model.training)
+  # Prediction confusion matrix
+  table(observed = clin.test$Response, predicted = test.preds)
+  
+  prediction_for_roc_curve <- predict(model.training,test[,-1, drop=FALSE],type="prob")
+  pred <- prediction(prediction_for_roc_curve[,2], clin.test$Response)
+  perf <- performance(pred, "tpr", "fpr")
+  
+  auc_ROCR <- performance(pred, measure = "auc")
+  print(auc_ROCR)
+  auc <- auc_ROCR@y.values[[1]]
+  print(auc)
+  
+  df <- data.frame(FalsePositive=c(perf@x.values[[1]]),
+                    TruePositive=c(perf@y.values[[1]]))
+  
+  return(df)
+}
+```
+
+Split into testing and training data
+```{r}
+testn <- round(.2 * nrow(response))
+set.seed(12345)
+testsamps <- sample(response$sample, testn)
+
+# all clin vars
+clin.train <- response %>%
+  dplyr::filter(!sample %in% testsamps)
+clin.test <- response %>%
+  dplyr::filter(sample %in% testsamps)
+```
+
+gopa testing and training
+```{r}
+train.exo <- microSigs %>%
+  dplyr::filter(!sample %in% testsamps) %>%
+  select(sample, gopa)
+test.exo <- microSigs %>%
+  dplyr::filter(sample %in% testsamps) %>%
+  select(sample, gopa)
+```
+
+## model and plot ROC
+```{r}
+gopa_ra <- getROC(train.exo, clin.train, test.exo, clin.test)
+
+gopa_ra_plot <- ggplot(gopa_ra, aes(x=FalsePositive, y=TruePositive)) + 
+  theme_bw() +
+  geom_smooth(se = FALSE, color="darkgreen")
+
+gopa_ra_plot
+```
+
+wind testing and training
+```{r}
+train.exo <- microSigs %>%
+  dplyr::filter(!sample %in% testsamps) %>%
+  select(sample, wind)
+test.exo <- microSigs %>%
+  dplyr::filter(sample %in% testsamps) %>%
+  select(sample, wind)
+```
+
+## model and plot ROC
+```{r}
+wind_ra <- getROC(train.exo, clin.train, test.exo, clin.test)
+
+wind_ra_plot <- ggplot(wind_ra, aes(x=FalsePositive, y=TruePositive)) + 
+  theme_bw() +
+  geom_smooth(se = FALSE, color="magenta")
+
+wind_ra_plot
+```
+
+paa testing and training
+```{r}
+train.exo <- microSigs %>%
+  dplyr::filter(!sample %in% testsamps) %>%
+  select(sample, paa)
+test.exo <- microSigs %>%
+  dplyr::filter(sample %in% testsamps) %>%
+  select(sample, paa)
+```
+
+## model and plot ROC
+```{r}
+paa_ra <- getROC(train.exo, clin.train, test.exo, clin.test)
+
+paa_ra_plot <- ggplot(paa_ra, aes(x=FalsePositive, y=TruePositive)) + 
+  theme_bw() +
+  geom_smooth(se = FALSE, color="blue")
+
+paa_ra_plot
+```
