@@ -1,0 +1,75 @@
+---
+title: "paa"
+author: "Caroline Wheeler"
+date: "2022-12-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+define
+```{r}
+paa_up <- c("s__Clostridium sp. UNK-MGS-6", "s__Firmicutes bacterium CAG 41", "s__Coprobacillus cateniformis", "s__Clostridia bacterium UC5-1-2G4","s__Streptococcus dysgalactiae", "s__Acidaminococcus sp. HPA0509", "s__Roseburia sp.CAG-303", "s__Butyrivibrio_sp. AE2032", "s__Coprobacillus sp. 29-1", "s__Coprobacillus sp. D6")
+
+paa_down <- c("s__Alistipes sp. CAG-435", "s__Fusobacterium hwasookii", "s__Leuconostoc sp. DORA-2", "s__Paenibacillus lentimorbus", "s__Fusobacterium sp. oral taxon 370", "s__Alcanivorax hongdengensis", "s__Arthrobacter sp. LS16", "s__Bacillus sp. 5B6", "s__Bacillus velezensis", "s__Fusobacterium sp. OBRC1")
+```
+
+
+test paa signature
+```{r}
+
+```
+
+Calculate signature score
+```{r}
+# Function to calculate a microbe signature given a set of up and down regulated microbes and the relAbun of sample data
+#
+# @sig_up character vector listing microbes in given signature that are up-regulated
+# @sig_down character vector listing microbes in given signature that are down-regulated
+# @taxa df containing columns 'sample', 'microbe', 'exo.ra'
+#
+getMicroSigScore <- function(sig_up, sig_down, taxa){
+  # z score transform relAbun 
+  df <- taxa %>%
+    group_by(sample) %>%
+    mutate(z_score = scale(exo.ra))
+  
+  upMics <- df %>%
+    filter(microbe %in% sig_up)
+  
+  upTotal <- length(unique(upMics$microbe))
+  
+  upMics <- upMics %>%  
+    group_by(sample) %>%
+    summarize(tempUp = sum(exo.ra))
+  
+  downMics <- df %>%
+    filter(microbe %in% sig_down)
+  
+  downTotal <- length(unique(downMics$microbe))
+  
+  downMics <- downMics %>%
+  group_by(sample) %>%
+  summarize(tempDown = sum(exo.ra))
+  
+  if(upTotal == 0 && downTotal == 0){
+    df <- data.frame(matrix(ncol = 0, nrow = 0))
+  }else if(upTotal == 0){
+    df <- downMics %>%
+      mutate(score = tempDown*(1/downTotal)) %>%
+      select(sample,score)
+  }else if(downTotal == 0){
+    df <- upMics %>%
+      mutate(score = tempUp*(1/upTotal)) %>%
+      select(sample, score)
+  }else{
+    df <- merge(upMics, downMics, by = "sample") %>%
+    mutate(score = (tempUp - tempDown)*(1/(upTotal + downTotal))) %>%
+    select(sample, score)
+  }
+  
+  return(df)
+}
+```

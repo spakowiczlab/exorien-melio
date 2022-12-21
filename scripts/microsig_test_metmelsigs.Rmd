@@ -21,10 +21,9 @@ read in data
 sigs <- read.csv("../data/signatures-filtered-metastatic-melanoma_20221207.csv")
 
 response <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE) %>%
-  dplyr::rename("sample" = Sample_ID,
-         "IO.responder" = Response) %>%
+  dplyr::rename("sample" = Sample_ID) %>%
   filter(Cancer_Type == "Melanoma") %>%
-  dplyr::select(sample, IO.responder) 
+  dplyr::select(sample, Response) 
 
 # read in microbe data from exorien-melio 
 taxa_all <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_RA-with-taxonomy.csv") %>%
@@ -36,7 +35,7 @@ taxa <- taxa_all %>%
   rename(microbe = species)
 ```
 
-get relAbun at all levels
+get relAbun at all levels and combine into one table
 ```{r}
 # @level is a string containing the taxonomic level we want to calculate relative abundances for
 get_ra <- function(level){
@@ -75,6 +74,10 @@ gopaSig_down <- sub("^.+\\|", "",unlist(strsplit(sigs$MetaPhlAn.taxon.names[4], 
 #691
 windSig_up <- sub("^.+\\|", "", unlist(strsplit(sigs$MetaPhlAn.taxon.names[1] ,",")))
 windSig_down <- sub("^.+\\|", "", unlist(strsplit(sigs$MetaPhlAn.taxon.names[2] ,",")))
+
+paa_up <- c("s__Clostridium sp. UNK-MGS-6", "s__Firmicutes bacterium CAG 41", "s__Coprobacillus cateniformis", "s__Clostridia bacterium UC5-1-2G4","s__Streptococcus dysgalactiae", "s__Acidaminococcus sp. HPA0509", "s__Roseburia sp.CAG-303", "s__Butyrivibrio_sp. AE2032", "s__Coprobacillus sp. 29-1", "s__Coprobacillus sp. D6")
+
+paa_down <- c("s__Alistipes sp. CAG-435", "s__Fusobacterium hwasookii", "s__Leuconostoc sp. DORA-2", "s__Paenibacillus lentimorbus", "s__Fusobacterium sp. oral taxon 370", "s__Alcanivorax hongdengensis", "s__Arthrobacter sp. LS16", "s__Bacillus sp. 5B6", "s__Bacillus velezensis", "s__Fusobacterium sp. OBRC1")
 ```
 
 
@@ -92,7 +95,7 @@ Calculate signature score
 # @taxa df containing columns 'sample', 'microbe', 'exo.ra'
 #
 getMicroSigScore <- function(sig_up, sig_down, taxa){
-  # z score transform relAbun
+  # z score transform relAbun 
   df <- taxa %>%
     group_by(sample) %>%
     mutate(z_score = scale(exo.ra))
@@ -112,16 +115,29 @@ getMicroSigScore <- function(sig_up, sig_down, taxa){
   downTotal <- length(unique(downMics$microbe))
   
   downMics <- downMics %>%
-    group_by(sample) %>%
-    summarize(tempDown = sum(exo.ra))
+  group_by(sample) %>%
+  summarize(tempDown = sum(exo.ra))
   
-  df <- merge(upMics, downMics, by = "sample") %>%
+  if(upTotal == 0 && downTotal == 0){
+    df <- data.frame(matrix(ncol = 0, nrow = 0))
+  }else if(upTotal == 0){
+    df <- downMics %>%
+      mutate(score = tempDown*(1/downTotal)) %>%
+      select(sample,score)
+  }else if(downTotal == 0){
+    df <- upMics %>%
+      mutate(score = tempUp*(1/upTotal)) %>%
+      select(sample, score)
+  }else{
+    df <- merge(upMics, downMics, by = "sample") %>%
     mutate(score = (tempUp - tempDown)*(1/(upTotal + downTotal))) %>%
     select(sample, score)
+  }
   
   return(df)
 }
 ```
+
 
 get signature scores for sigs from literature
 ```{r}
@@ -132,12 +148,11 @@ gopa <- getMicroSigScore(gopaSig_up, gopaSig_down, taxa) %>%
   rename(gopa = score)
 
 # currently returns emtpy df - check presence of microbes
-#matson <- getMicroSigScore(matsonSig_up, matsonSig_down, taxa) %>%
-#  rename(matson = score)
+matson <- getMicroSigScore(matsonSig_up, matsonSig_down, taxa) %>%
+  rename(matson = score)
 
-paa_up <- c("s__Clostridium sp. UNK-MGS-6", "s__Firmicutes bacterium CAG 41", "s__Coprobacillus cateniformis", "s__Clostridia bacterium UC5-1-2G4","s__Streptococcus dysgalactiae", "s__Acidaminococcus sp. HPA0509", "s__Roseburia sp.CAG-303", "s__Butyrivibrio_sp. AE2032", "s__Coprobacillus sp. 29-1", "s__Coprobacillus sp. D6")
-
-paa_down <- c("s__Alistipes sp. CAG-435", "s__Fusobacterium hwasookii", "s__Leuconostoc sp. DORA-2", "s__Paenibacillus lentimorbus", "s__Fusobacterium sp. oral taxon 370", "s__Alcanivorax hongdengensis", "s__Arthrobacter sp. LS16", "s__Bacillus sp. 5B6", "s__Bacillus velezensis", "s__Fusobacterium sp. OBRC1")
+frankel <- getMicroSigScore(frankelSig_up, c(), taxa) %>%
+  rename(frankel = score)# pass and empty character vector for negatively correlated microbes 
 
 paa <- getMicroSigScore(paa_up, paa_down, taxa) %>%
   rename(paa = score)
@@ -145,14 +160,14 @@ paa <- getMicroSigScore(paa_up, paa_down, taxa) %>%
 
 combine signatures into one table
 ```{r}
-df_list <- list(wind, gopa, paa)
+df_list <- list(wind, gopa, paa, frankel, matson)
 microSigs <- df_list %>% reduce(full_join, by='sample')
 ```
 
-testing area
-```{r}
-unique (grep("taxon", taxa$microbe, value=TRUE))
-```
+<!-- testing area -->
+<!-- ```{r} -->
+<!-- unique (grep("taxon", taxa$microbe, value=TRUE)) -->
+<!-- ``` -->
 
 Test signature predictive power
 
@@ -197,7 +212,7 @@ clin.test <- response %>%
   dplyr::filter(sample %in% testsamps)
 ```
 
-gopa testing and training
+### gopa testing and training ###
 ```{r}
 train.exo <- microSigs %>%
   dplyr::filter(!sample %in% testsamps) %>%
@@ -207,7 +222,7 @@ test.exo <- microSigs %>%
   select(sample, gopa)
 ```
 
-## model and plot ROC
+# model and plot ROC
 ```{r}
 gopa_ra <- getROC(train.exo, clin.train, test.exo, clin.test)
 
@@ -255,7 +270,81 @@ paa_ra <- getROC(train.exo, clin.train, test.exo, clin.test)
 
 paa_ra_plot <- ggplot(paa_ra, aes(x=FalsePositive, y=TruePositive)) + 
   theme_bw() +
-  geom_smooth(se = FALSE, color="blue")
+  geom_line(color = "blue")
+  #geom_smooth(se = FALSE, color="blue")
 
 paa_ra_plot
 ```
+### matson testing and training ###
+```{r}
+train.exo <- microSigs %>%
+  dplyr::filter(!sample %in% testsamps) %>%
+  select(sample, matson)
+test.exo <- microSigs %>%
+  dplyr::filter(sample %in% testsamps) %>%
+  select(sample, matson)
+```
+
+## model and plot ROC
+```{r}
+mat_ra <- getROC(train.exo, clin.train, test.exo, clin.test)
+
+mat_ra_plot <- ggplot(mat_ra, aes(x=FalsePositive, y=TruePositive)) + 
+  theme_bw() +
+  #geom_line(color = "blue")
+  geom_smooth(se = FALSE, color="orange")
+
+mat_ra_plot
+```
+
+### frankel testing and training ###
+```{r}
+train.exo <- microSigs %>%
+  dplyr::filter(!sample %in% testsamps) %>%
+  select(sample, frankel)
+test.exo <- microSigs %>%
+  dplyr::filter(sample %in% testsamps) %>%
+  select(sample, frankel)
+```
+
+## model and plot ROC
+```{r}
+frank_ra <- getROC(train.exo, clin.train, test.exo, clin.test)
+
+frank_ra_plot <- ggplot(frank_ra, aes(x=FalsePositive, y=TruePositive)) + 
+  theme_bw() +
+  #geom_line(color = "blue")
+  geom_smooth(se = FALSE, color="purple")
+
+frank_ra_plot
+```
+
+######################################
+Combined ROC's
+######################################
+```{r}
+temp <- combine(wind_ra, gopa_ra, paa_ra, mat_ra, frank_ra)
+
+combined <- ggplot(temp, aes(x=FalsePositive, y=TruePositive, color=source)) + 
+  theme_bw() +
+  geom_line() +
+  #geom_smooth(se = FALSE) +
+  scale_color_manual(values=c("darkgoldenrod2", "cornflowerblue", "deeppink4", "darkgreen", "purple")) +
+  xlab("Specifity") +
+  ylab("Sensitivity") +
+annotate(geom="text", x=0.75, y=0.3, label="AUC = 0.7",
+            color="cornflowerblue", size=8) +
+annotate(geom="text", x=0.75, y=0.2, label="AUC = 0.8",
+            color="darkgoldenrod2", size=8) +
+  annotate(geom="text", x=0.75, y=0.1, label="AUC = 0.95",
+            color="deeppink4", size=8) +
+  annotate(geom="text", x=0.75, y=0.5, label="AUC = 0.55",
+            color="darkgreen", size=8) +
+  annotate(geom="text", x=0.75, y=0.4, label="AUC = 0.6875",
+            color="purple", size=8) 
+
+combined
+
+ggsave(filename = "../figures/microSig_combined_ROC.png", plot = combined, width = 28, height = 10, dpi = 400)
+```
+
