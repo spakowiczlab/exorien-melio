@@ -13,7 +13,6 @@ library(randomForest)
 library(ggplot2)
 library(ROCR)
 library(gdata)
-library(vegan)
 ```
 
 read in data
