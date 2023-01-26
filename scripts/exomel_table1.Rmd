@@ -12,6 +12,11 @@ library(tidyverse)
 library(tableone)
 ```
 
+Add histology, stage, treatment type, median PFS
+		Strat by response and p-value (tableone)...fischers exact?
+		
+Need to resolve additional variables
+		
 ```{r}
 response <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE) %>%
   rename("RNASeq" = Sample_ID) %>%
@@ -22,14 +27,40 @@ clin <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_202
 
 extra_clin <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_PatientMaster_V4.csv")
 
+hist <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_PatientHistory_V4.csv")
+
 clin <- merge(response, clin)
 clin <- merge(clin, extra_clin)
+clin <- merge(clin, hist)
+
+# diagnosis <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_Diagnosis_V4.csv") %>%
+#   filter(AvatarKey %in% clin$AvatarKey) %>%
+#   select(AvatarKey, Histology) %>%
+#   distinct()
+
+# meds <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_Medications_V4.csv") %>%
+#   filter(AvatarKey %in% clin$AvatarKey) %>%
+#   select(AvatarKey, Medication) %>%
+#   distinct()
+# 
+# meds %>% select(Medication) %>% distinct()
+# 
+# outcomes <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_Outcomes_V4.csv") %>%
+#   filter(AvatarKey %in% clin$AvatarKey) %>%
+#   select(AvatarKey, )
+
+# clin <- merge(clin, meds)
+# clin <- merge(clin, outcomes)
+# clin <- merge(clin, diagnosis)
+
 ```
 
 ```{r}
 table(clin$Response)
 table(clin$Sex)
 table(clin$Age.At.Specimen.Collection)
+# table(clin$Histology)
+# table(clin$ClinGroupStage)
 ```
 
 ```{r}
@@ -47,12 +78,19 @@ clin <- clin %>%
 ```
 
 ```{r}
-variables_listed <- c("Response", "Age", "Sex", "Race")
+variables_listed <- c( "Age", "Sex", "Race")
 
-cat_vars <- c("Response","Age", "Sex", "Race")
+cat_vars <- c("Age", "Sex", "Race")
 
-rcc <- CreateTableOne(vars= variables_listed, data= clin, factorVars = cat_vars)
-tab <- print(rcc, noSpaces = TRUE, printToggle = FALSE, quote = FALSE, test = FALSE)
+rcc <- CreateTableOne(vars = variables_listed, strata = "Response", data = clin, factorVars = cat_vars)
+tab <- print(rcc, noSpaces = TRUE, quote = FALSE, nonnormal = biomarkers, formatOptions = list(big.mark = ","))
+#tab <- print(rcc, nonnormal = biomarkers, formatOptions = list(big.mark = ","))
 tab
 ```
+
+```{r}
+tab3 <- CreateTableOne(vars = myVars, strata = "trt" , data = pbc, factorVars = catVars)
+print(tab3, nonnormal = biomarkers, formatOptions = list(big.mark = ","))
+```
+
 
