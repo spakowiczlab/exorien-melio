@@ -1,0 +1,28 @@
+---
+title: "get more clinical info"
+author: "Caroline Wheeler"
+date: '2022-12-01'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(readxl)
+```
+
+read in data
+```{r}
+clin <- readxl::read_xlsx("/Users/wheeler.1017/Library/CloudStorage/OneDrive-SharedLibraries-TheOhioStateUniversityWexnerMedicalCenter/Spakowicz, Daniel - projects/exorien-melio/data/MEL_ICB_PFS.xlsx") 
+```
+```{r}
+clin <- clin %>%
+  select(id, medication, IO, OS_IO_Y)
+```
+
+```{r}
+write.csv("../data/")
+```
+
+
