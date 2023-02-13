@@ -22,6 +22,14 @@ response <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt",
   rename("RNASeq" = Sample_ID) %>%
   filter(Cancer_Type == "Melanoma")
 
+io <- read.csv("../data/pfs_IO.csv") %>%
+  rename("AvatarKey" = id) %>%
+  select(AvatarKey, medication, OS_IO_Y) %>%
+  rename("IO" = medication,
+         "PFS" = OS_IO_Y)
+
+# Is OS the same as PFS? in this data? average this? 
+
 clin <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_ClinicalMolLinkage_V4.csv") %>%
   rename("AvatarKey" = ORIENAvatarKey)
 
@@ -29,40 +37,36 @@ extra_clin <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060O
 
 hist <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_PatientHistory_V4.csv")
 
+diagnosis <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_Diagnosis_V4.csv") %>%
+  select(AvatarKey, ClinGroupStage) %>%
+  rename("Stage" = ClinGroupStage)
+
+
 clin <- merge(response, clin)
 clin <- merge(clin, extra_clin)
 clin <- merge(clin, hist)
+clin <- merge(clin, io)
+clin <- merge(clin, diagnosis)
 
-# diagnosis <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_Diagnosis_V4.csv") %>%
-#   filter(AvatarKey %in% clin$AvatarKey) %>%
-#   select(AvatarKey, Histology) %>%
-#   distinct()
 
-# meds <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_Medications_V4.csv") %>%
-#   filter(AvatarKey %in% clin$AvatarKey) %>%
-#   select(AvatarKey, Medication) %>%
-#   distinct()
-# 
-# meds %>% select(Medication) %>% distinct()
-# 
 # outcomes <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_Outcomes_V4.csv") %>%
 #   filter(AvatarKey %in% clin$AvatarKey) %>%
 #   select(AvatarKey, )
 
-# clin <- merge(clin, meds)
 # clin <- merge(clin, outcomes)
-# clin <- merge(clin, diagnosis)
-
 ```
 
+
+
 ```{r}
-table(clin$Response)
-table(clin$Sex)
-table(clin$Age.At.Specimen.Collection)
+# table(clin$Response)
+# table(clin$Sex)
+# table(clin$Age.At.Specimen.Collection)
+table(clin$Stage)
 # table(clin$Histology)
 # table(clin$ClinGroupStage)
 ```
-
+Make age a categorial variable 
 ```{r}
 clin <- clin %>%
   mutate(Response = ifelse(Response == 0, "Non-Responder", "Responder"),
@@ -77,20 +81,39 @@ clin <- clin %>%
 
 ```
 
+Clean up stage
 ```{r}
-variables_listed <- c( "Age", "Sex", "Race")
+clin <- clin %>%
+  mutate(Stage = case_when(Stage == "0a" ~ 'Stage 0',
+                          Stage == "I" | Stage == "IA" | Stage == "IB" ~ "Stage 1",
+                          Stage == "II" | Stage == "IIA" | Stage == "IIB" | Stage == "IIC" ~ "Stage 2",
+                          Stage == "III" | Stage == "IIIB" | Stage == "IIIC" ~ "Stage 3",
+                          Stage == "IV" | Stage == "IVA" | Stage == "IVC" ~ "Stage 4",
+                          Stage == "Unknown/Not Reported" | Stage == "No TNM applicable for this site/histology combination" | Stage == "Unknown/Not Applicable" ~ "NA",))
+                           
+```
 
-cat_vars <- c("Age", "Sex", "Race")
+```{r}
+variables_listed <- c( "Age", "Sex", "Race", "IO", "PFS", "Stage")
+
+cat_vars <- c("Age", "Sex", "Race", "IO", "Stage")
 
 rcc <- CreateTableOne(vars = variables_listed, strata = "Response", data = clin, factorVars = cat_vars)
-tab <- print(rcc, noSpaces = TRUE, quote = FALSE, nonnormal = biomarkers, formatOptions = list(big.mark = ","))
+tab <- print(rcc, noSpaces = TRUE, quote = FALSE, formatOptions = list(big.mark = ","))
 #tab <- print(rcc, nonnormal = biomarkers, formatOptions = list(big.mark = ","))
-tab
+
 ```
 
 ```{r}
-tab3 <- CreateTableOne(vars = myVars, strata = "trt" , data = pbc, factorVars = catVars)
-print(tab3, nonnormal = biomarkers, formatOptions = list(big.mark = ","))
+write.csv(tab, file = "../figures/table1.csv")
 ```
 
+<!-- ```{r} -->
+<!-- table(io$medication) -->
+<!-- table(io$IO) -->
+<!-- ``` -->
+
+```{r}
+table(clin$Histology.Behavior)
+```
 
