@@ -25,39 +25,54 @@ response <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt",
   dplyr::select(sample, response) %>%
   mutate(response = ifelse(response == 1, "responder", "non-responder"))
 
-# read in microbe data from exorien-melio 
-taxa_all <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_RA-with-taxonomy.csv") %>%
-  filter(sample %in% response$sample)
-  #mutate(Taxonomy = ifelse(grepl("d__Bacteria", Taxonomy), sub('d','k',Taxonomy), Taxonomy))
+# Read in relabun data
+taxa <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_RA-with-taxonomy.csv") %>%   filter(sample %in% response$sample) %>%
+  select(sample, microbe, exo.ra)
 
-taxa <- taxa_all %>%
-  select(sample, species, exo.ra) %>%
-  rename(microbe = species)
+# Read in counts
+counts <- read.delim("/fs/ess/PAS1695/projects/exorien/data/k2bout.txt") %>%
+  filter(sample %in% response$sample) %>%
+  remove_rownames %>% 
+  column_to_rownames(var="sample")
 ```
 
-diversity calcs
+<!-- RA wide -->
+<!-- ```{r} -->
+<!-- taxawide <- taxa %>% -->
+<!--   mutate(exo.ra = as.integer(exo.ra)) %>% -->
+<!--   spread(microbe, exo.ra) %>% -->
+<!--   remove_rownames %>%  -->
+<!--   column_to_rownames(var="sample")  -->
+<!-- ``` -->
+
+diversity calcs 
 ```{r}
-#prep
-alpha <- taxa %>%
-  select(microbe, exo.ra, sample)
-alpha <- spread(alpha, microbe, exo.ra) %>%
-  remove_rownames %>% column_to_rownames(var="sample")
-alpha[is.na(alpha)] <- 0
-
-# simpson 
-test <- as.data.frame(diversity(alpha, index = "simpson"))
-test$sample <- row.names(test)
-rownames(test) <- NULL
-simpson <- test %>%
-  dplyr::rename("alpha_diversity" = `diversity(alpha, index = "simpson")`)
-
-# shannon
-test <- as.data.frame(diversity(alpha, index = "shannon"))
-test$sample <- row.names(test)
-rownames(test) <- NULL
-shannon <- test %>%
-  dplyr::rename("alpha_diversity" = `diversity(alpha, index = "shannon")`)
+div <- taxa %>% 
+  group_by(sample) %>%
+  summarize(sobs = specnumber(exo.ra),
+            shannon = diversity(exo.ra, index = "shannon"),
+            simpson = diversity(exo.ra, index = "simpson"),
+            invsimpson = 1/simpson) %>%
+  mutate(chao = as.data.frame(t(estimateR(counts)))$S.chao1,
+         ACE = as.data.frame(t(estimateR(counts)))$S.ACE)
 ```
+
+<!-- diversity calcs w/ counts - Shannon entropy, Simpson’s index, Chao1 -->
+<!-- ```{r} -->
+<!-- # simpson  -->
+<!-- test <- as.data.frame(diversity(counts, index = "simpson")) -->
+<!-- test$sample <- row.names(test) -->
+<!-- rownames(test) <- NULL -->
+<!-- simpson <- test %>% -->
+<!--   dplyr::rename("alpha_diversity" = `diversity(counts, index = "simpson")`) -->
+
+<!-- # shannon -->
+<!-- test <- as.data.frame(diversity(counts, index = "shannon")) -->
+<!-- test$sample <- row.names(test) -->
+<!-- rownames(test) <- NULL -->
+<!-- shannon <- test %>% -->
+<!--   dplyr::rename("alpha_diversity" = `diversity(counts, index = "shannon")`) -->
+<!-- ``` -->
 
 Function for shuffling and creating training / testing groups for getROC 
 ```{r}
@@ -174,20 +189,29 @@ kTest <- function(clin, feature, seeds){
 ```
 
 ```{r}
-seed_list <- c(12345,12346,12347,12348,12349)
+seed_list <- c(12345, 23422, 23425, 23422, 76543)
 ```
 
 ```{r}
-simp_auc <- kTest(response, simpson, seed_list)
-simp_auc$signature <- "Simpson's diversity"
+simp_auc <- kTest(response, div %>% select(sample, simpson), seed_list)
+simp_auc $signature <- "Simpson's"
 
-shan_auc <- kTest(response, shannon, seed_list)
-shan_auc$signature <- "Shannon's diversity"
+shan_auc <- kTest(response, div %>% select(sample, shannon), seed_list)
+shan_auc$signature <- "Shannon's"
+
+invsim_auc <- kTest(response, div %>% select(sample, invsimpson), seed_list)
+invsim_auc$signature <- "Inverse Simpson's"
+
+chao_auc <- kTest(response, div %>% select(sample, chao) , seed_list)
+chao_auc$signature <- "Chao1"
+
+ace_auc <- kTest(response, div %>% select(sample, ACE) , seed_list)
+ace_auc$signature <- "ACE"
 ```
 
 prep for boxplot
 ```{r}
-aucs <- rbind(simp_auc, shan_auc)
+aucs <- rbind(simp_auc, shan_auc, invsim_auc, chao_auc, ace_auc)
 ```
 
 ```{r}
@@ -197,5 +221,10 @@ plot <- ggplot(data=aucs, mapping=aes(x=reorder(signature, AUC), y=AUC, col=sign
   theme_bw()
 
 plot
+
+# ggsave(plot = plot, file = "../figures/diversityAUCboxplots.png", dev = "png", width = 6, height = 5, dpi = 600)
 ```
+
+
+
 

@@ -37,16 +37,17 @@ extra_clin <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060O
 
 hist <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_PatientHistory_V4.csv")
 
-diagnosis <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_Diagnosis_V4.csv") %>%
-  select(AvatarKey, ClinGroupStage) %>%
-  rename("Stage" = ClinGroupStage)
-
-
 clin <- merge(response, clin)
 clin <- merge(clin, extra_clin)
 clin <- merge(clin, hist)
 clin <- merge(clin, io)
-clin <- merge(clin, diagnosis)
+
+diagnosis <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_Diagnosis_V4.csv") %>%
+  select(AvatarKey, ClinGroupStage, CurrentlySeenForPrimaryOrRecurr) %>%
+  rename("Stage" = ClinGroupStage) %>%
+  filter(AvatarKey %in% clin$AvatarKey)
+
+#clin <- merge(clin, diagnosis)
 
 
 # outcomes <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_Outcomes_V4.csv") %>%
@@ -66,37 +67,44 @@ table(clin$Stage)
 # table(clin$Histology)
 # table(clin$ClinGroupStage)
 ```
-Make age a categorial variable 
+
 ```{r}
 clin <- clin %>%
   mutate(Response = ifelse(Response == 0, "Non-Responder", "Responder"),
-         Age = case_when(Age.At.Specimen.Collection >= 80  & Age.At.Specimen.Collection <= 89.99 ~ '80-89',
-                         Age.At.Specimen.Collection >= 70  & Age.At.Specimen.Collection <= 79.99 ~ '70-79',
-                         Age.At.Specimen.Collection >= 60  & Age.At.Specimen.Collection <= 69.99 ~ '60-69',
-                         Age.At.Specimen.Collection >= 50  & Age.At.Specimen.Collection <= 59.99 ~ '50-59',
-                         Age.At.Specimen.Collection >= 40  & Age.At.Specimen.Collection <= 49.99 ~ '40-49',
-                         Age.At.Specimen.Collection >= 30  & Age.At.Specimen.Collection <= 39.99 ~ '30-39',
-                         Age.At.Specimen.Collection >= 20  & Age.At.Specimen.Collection <= 29.99 ~ '20-29',
-                         Age.At.Specimen.Collection >= 10  & Age.At.Specimen.Collection <= 19.99 ~ '10-19',))
-
+                           Age = as.double(Age.At.Specimen.Collection))
 ```
 
-Clean up stage
-```{r}
-clin <- clin %>%
-  mutate(Stage = case_when(Stage == "0a" ~ 'Stage 0',
-                          Stage == "I" | Stage == "IA" | Stage == "IB" ~ "Stage 1",
-                          Stage == "II" | Stage == "IIA" | Stage == "IIB" | Stage == "IIC" ~ "Stage 2",
-                          Stage == "III" | Stage == "IIIB" | Stage == "IIIC" ~ "Stage 3",
-                          Stage == "IV" | Stage == "IVA" | Stage == "IVC" ~ "Stage 4",
-                          Stage == "Unknown/Not Reported" | Stage == "No TNM applicable for this site/histology combination" | Stage == "Unknown/Not Applicable" ~ "NA",))
-                           
-```
+<!-- Make age a categorial variable  -->
+<!-- ```{r} -->
+<!-- clin <- clin %>% -->
+<!--   mutate(Response = ifelse(Response == 0, "Non-Responder", "Responder"), -->
+<!--          Age = case_when(Age.At.Specimen.Collection >= 80  & Age.At.Specimen.Collection <= 89.99 ~ '80-89', -->
+<!--                          Age.At.Specimen.Collection >= 70  & Age.At.Specimen.Collection <= 79.99 ~ '70-79', -->
+<!--                          Age.At.Specimen.Collection >= 60  & Age.At.Specimen.Collection <= 69.99 ~ '60-69', -->
+<!--                          Age.At.Specimen.Collection >= 50  & Age.At.Specimen.Collection <= 59.99 ~ '50-59', -->
+<!--                          Age.At.Specimen.Collection >= 40  & Age.At.Specimen.Collection <= 49.99 ~ '40-49', -->
+<!--                          Age.At.Specimen.Collection >= 30  & Age.At.Specimen.Collection <= 39.99 ~ '30-39', -->
+<!--                          Age.At.Specimen.Collection >= 20  & Age.At.Specimen.Collection <= 29.99 ~ '20-29', -->
+<!--                          Age.At.Specimen.Collection >= 10  & Age.At.Specimen.Collection <= 19.99 ~ '10-19',)) -->
+
+<!-- ``` -->
+
+<!-- Clean up stage -->
+<!-- ```{r} -->
+<!-- clin <- clin %>% -->
+<!--   mutate(Stage = case_when(Stage == "0a" ~ 'Stage 0', -->
+<!--                           Stage == "I" | Stage == "IA" | Stage == "IB" ~ "Stage 1", -->
+<!--                           Stage == "II" | Stage == "IIA" | Stage == "IIB" | Stage == "IIC" ~ "Stage 2", -->
+<!--                           Stage == "III" | Stage == "IIIB" | Stage == "IIIC" ~ "Stage 3", -->
+<!--                           Stage == "IV" | Stage == "IVA" | Stage == "IVC" ~ "Stage 4", -->
+<!--                           Stage == "Unknown/Not Reported" | Stage == "No TNM applicable for this site/histology combination" | Stage == "Unknown/Not Applicable" ~ "NA",)) -->
+
+<!-- ``` -->
 
 ```{r}
-variables_listed <- c( "Age", "Sex", "Race", "IO", "PFS", "Stage")
+variables_listed <- c("Age", "Sex", "Race", "IO", "PFS")
 
-cat_vars <- c("Age", "Sex", "Race", "IO", "Stage")
+cat_vars <- c("Sex", "Race", "IO")
 
 rcc <- CreateTableOne(vars = variables_listed, strata = "Response", data = clin, factorVars = cat_vars)
 tab <- print(rcc, noSpaces = TRUE, quote = FALSE, formatOptions = list(big.mark = ","))
@@ -106,14 +114,5 @@ tab <- print(rcc, noSpaces = TRUE, quote = FALSE, formatOptions = list(big.mark 
 
 ```{r}
 write.csv(tab, file = "../figures/table1.csv")
-```
-
-<!-- ```{r} -->
-<!-- table(io$medication) -->
-<!-- table(io$IO) -->
-<!-- ``` -->
-
-```{r}
-table(clin$Histology.Behavior)
 ```
 
