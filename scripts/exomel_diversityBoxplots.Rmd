@@ -25,16 +25,31 @@ response <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt",
   dplyr::select(sample, response) %>%
   mutate(response = ifelse(response == 1, "responder", "non-responder"))
 
-# Read in relabun data
-taxa <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_RA-with-taxonomy.csv") %>%   filter(sample %in% response$sample) %>%
-  select(sample, microbe, exo.ra)
-
 # Read in counts
 counts <- read.delim("/fs/ess/PAS1695/projects/exorien/data/k2bout.txt") %>%
   filter(sample %in% response$sample) %>%
+  select(-Homo.sapiens)
+```
+
+calculate RA
+```{r}
+ra <- counts %>%
+  gather(key = "microbe", value = "counts", 2:ncol(counts))
+  
+ra$total <- ave(ra$counts, ra$sample, FUN=sum)
+
+ra <- ra %>%
+  mutate(exo.ra = counts/total)
+```
+
+prep counts for calc
+```{r}
+counts <- counts %>%
   remove_rownames %>% 
   column_to_rownames(var="sample")
 ```
+
+
 
 <!-- RA wide -->
 <!-- ```{r} -->
@@ -47,7 +62,7 @@ counts <- read.delim("/fs/ess/PAS1695/projects/exorien/data/k2bout.txt") %>%
 
 diversity calcs 
 ```{r}
-div <- taxa %>% 
+div <- ra %>% 
   group_by(sample) %>%
   summarize(sobs = specnumber(exo.ra),
             shannon = diversity(exo.ra, index = "shannon"),
@@ -126,10 +141,8 @@ k_validate <- function(clin_data, feature_data, seed){
   message("\nAccuracy average: ", (rowMeans(as.data.frame(avg_auc))))
   return(out)
 }
-```
 
-ROC function
-```{r}
+# ROC function
 # Function create and test RF model #
 getROC <- function(train, clin.train, test, clin.test){
   model.training <- randomForest(x = train[,-1, drop=FALSE], y = as.factor(clin.train$response))
@@ -157,9 +170,6 @@ getROC <- function(train, clin.train, test, clin.test){
   return(out)
 }
 
-```
-
-```{r}
 # Grabbing AUROC values from input models #
 grabVals <- function(input){
   out <- list()
@@ -170,9 +180,7 @@ grabVals <- function(input){
   }
   out
 }
-```
 
-```{r}
 # Main function call to generate RF models using 5 seeds #
 kTest <- function(clin, feature, seeds){
   out <- list()
@@ -222,9 +230,24 @@ plot <- ggplot(data=aucs, mapping=aes(x=reorder(signature, AUC), y=AUC, col=sign
 
 plot
 
-# ggsave(plot = plot, file = "../figures/diversityAUCboxplots.png", dev = "png", width = 6, height = 5, dpi = 600)
+ggsave(plot = plot, file = "../figures/diversityAUCboxplots.png", dev = "png", width = 6, height = 5, dpi = 400)
 ```
 
+plot diversity measure strat by response 
+```{r}
+div <- merge(div, response) %>%
+  select(-sobs) %>%
+  gather(key = "Signature", value = "score", 2:6)
+```
+
+```{r}
+div %>%
+  ggplot(aes(x=response, y=score)) +
+  geom_boxplot(aes(fill = response)) + 
+  facet_wrap(~Signature, scales = "free") 
+
+ggsave(file = "../figures/diversityBoxplots.png", dev = "png", width = 6, height = 5, dpi = 400)
+```
 
 
 
