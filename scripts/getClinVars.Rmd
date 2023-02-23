@@ -22,7 +22,7 @@ clin <- clin %>%
 ```
 
 ```{r}
-write.csv("../data/pfs_IO.csv")
+write.csv(clin, "../data/pfs_IO.csv")
 ```
 
 
