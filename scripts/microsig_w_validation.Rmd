@@ -13,6 +13,7 @@ library(randomForest)
 library(ggplot2)
 library(ROCR)
 library(gdata)
+library(vegan)
 ```
 
 read in data
@@ -37,21 +38,27 @@ taxa <- taxa_all %>%
   rename(microbe = species)
 ```
 
-alpha diversity
+diversity calcs
 ```{r}
-#prep
 alpha <- taxa %>%
   select(microbe, exo.ra, sample)
 alpha <- spread(alpha, microbe, exo.ra) %>%
   remove_rownames %>% column_to_rownames(var="sample")
 alpha[is.na(alpha)] <- 0
 
-#cacl diversity
+# simpson 
 test <- as.data.frame(diversity(alpha, index = "simpson"))
 test$sample <- row.names(test)
 rownames(test) <- NULL
 alpha <- test %>%
   dplyr::rename("alpha_diversity" = `diversity(alpha, index = "simpson")`)
+
+# # shannon
+# test <- as.data.frame(diversity(alpha, index = "shannon"))
+# test$sample <- row.names(test)
+# rownames(test) <- NULL
+# shannon <- test %>%
+#   dplyr::rename("alpha_diversity" = `diversity(alpha, index = "shannon")`)
 ```
 
 get relAbun at all levels and combine into one table
