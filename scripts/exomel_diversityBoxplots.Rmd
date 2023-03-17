@@ -219,18 +219,20 @@ ace_auc$signature <- "ACE"
 
 prep for boxplot
 ```{r}
-aucs <- rbind(simp_auc, shan_auc, invsim_auc, chao_auc, ace_auc)
+aucs <- rbind(simp_auc, shan_auc, chao_auc, ace_auc)
 ```
 
 ```{r}
 plot <- ggplot(data=aucs, mapping=aes(x=reorder(signature, AUC), y=AUC, col=signature)) +
   geom_boxplot() +
   geom_jitter(size=0.4, alpha=0.9) +
-  theme_bw()
+  theme_bw(base_size = 7) +
+  scale_color_manual(values=c("darkgoldenrod2", "salmon2", "cornflowerblue", "deeppink4")) +
+  theme(legend.position = "none")
 
 plot
 
-ggsave(plot = plot, file = "../figures/diversityAUCboxplots.png", dev = "png", width = 6, height = 5, dpi = 400)
+ggsave(plot = plot, file = "../figures/fig3_diversityAUCboxplots.png", dev = "png", width = 3, height = 4, dpi = 400)
 ```
 
 plot diversity measure strat by response 
@@ -240,13 +242,23 @@ div <- merge(div, response) %>%
   gather(key = "Signature", value = "score", 2:6)
 ```
 
+get rid of inv simpson
+```{r}
+div <- div %>%
+  filter(Signature != "invsimpson")
+```
+
+
 ```{r}
 div %>%
   ggplot(aes(x=response, y=score)) +
   geom_boxplot(aes(fill = response)) + 
-  facet_wrap(~Signature, scales = "free") 
+  facet_wrap(~Signature, scales = "free") + 
+  theme_bw(base_size = 7) +
+  scale_fill_manual(values=c("cornflowerblue", "deeppink4")) +
+  theme(legend.position = "none")
 
-ggsave(file = "../figures/diversityBoxplots.png", dev = "png", width = 6, height = 5, dpi = 400)
+ggsave(file = "../figures/fig3_diversityBoxplots.png", dev = "png", width = 3, height = 4, dpi = 400)
 ```
 
 

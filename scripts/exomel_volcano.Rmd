@@ -218,10 +218,12 @@ resPlot <- resPlot %>%
 ```
 
 ```{r}
-saveRDS(resPlot, file ="../data/deseqResults.RDS")
+#saveRDS(resPlot, file ="../data/deseqResults.RDS")
+resPlot <- readRDS("../data/deseqResults.RDS")
 ```
 
 ```{r}
+p = 0.05
 highlight_df <- resPlot %>% 
   dplyr::filter(pvalue < p & (log2FoldChange < low | log2FoldChange > high))
 ```
@@ -229,16 +231,18 @@ highlight_df <- resPlot %>%
 ```{r fig.height=4, fig.width=7}
 g <- ggplot(resPlot,aes(x=log2FoldChange, y=-log10(pvalue), label=delabel)) + 
   geom_text_repel() +
-  theme(legend.key.size = unit(1, 'cm'), legend.title = element_text(size=18), legend.text = element_text(size=18), axis.text =element_text(size = 18), axis.title=element_text(size=18)) +
+  theme(legend.key.size = unit(1, 'cm'), legend.title = element_text(size=7), legend.text = element_text(size=7), axis.text =element_text(size = 7), axis.title=element_text(size=7)) +
+  theme_bw(base_size = 7) +
   geom_point(colour="honeydew4") +
-  geom_point(data=highlight_df, aes(x=log2FoldChange, y=-log10(pvalue), label=delabel, color = `Taxonomic Grouping`),size=3) +
+  geom_point(data=highlight_df, aes(x=log2FoldChange, y=-log10(pvalue), label=delabel, color = `Taxonomic Grouping`),size=1) +
   scale_color_manual(values=c("red3", "cyan4", "darkgreen", "darkgoldenrod2", "salmon2", "cornflowerblue", "deeppink4")) +
   geom_vline(xintercept=c(low, high), linetype="dotted") +
-  geom_hline(yintercept=1, linetype="dotted")
+  geom_hline(yintercept=1, linetype="dotted") + 
+  theme_bw(base_size = 7) 
 g
 ```
 ```{r}
-ggsave(plot = g, file = "../figures/fig2_volcano2.png", dev = "png", width = 12, height = 10, dpi = 600)
+ggsave(plot = g, file = "../figures/fig3_volcano.png", dev = "png", width = 4, height = 4, dpi = 600)
 ```
 
 
