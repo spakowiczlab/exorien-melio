@@ -18,7 +18,7 @@ clin <- readxl::read_xlsx("/Users/wheeler.1017/Library/CloudStorage/OneDrive-Sha
 ```
 ```{r}
 clin <- clin %>%
-  select(id, medication, IO, OS_IO_Y)
+  select(id, medication, IO, OS_IO_M)
 ```
 
 ```{r}

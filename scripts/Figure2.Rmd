@@ -1,0 +1,158 @@
+---
+title: "Figure 2"
+output: html_document
+date: "2023-02-08"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Figure 2 #
+
+This file recreates the differential gene expression analysis and the gene set
+enrichment analysis plots of Figure 2.
+
+```{r Required Packages, include=FALSE}
+library(tidyverse)
+library(ggrepel)
+library(limma)
+library(edgeR)
+```
+
+### Differential Gene Expression Analysis ###
+
+**Data Required**  
+- Melanoma Expression Data  
+- Melanoma Clinical Data
+```{r Necessary Data, include=FALSE}
+seq_dat <- readr::read_tsv("Data/IO_NOVA_mel_seq.txt")
+clin_df <- readr::read_tsv("Data/IO_NOVA_mel_clin.txt")
+```
+
+```{r Differential Gene Expression Analysis}
+# Preparing clinical data and reordering to match seq_dat #
+clin_df$IO_Response <- ifelse(clin_df$response == 1, "Responder", "Non_Responder")
+clin_df$IO_Response <- factor(clin_df$IO_Response, levels = c("Responder", "Non_Responder"))
+clin_df <- clin_df[match(colnames(seq_dat)[2:ncol(seq_dat)], clin_df$Sample_ID) ,]
+# Check order #
+all(clin_df$Sample_ID == colnames(seq_dat)[2:ncol(seq_dat)])
+
+# Preparing sequencing data # 
+toMat <- function(x){
+  mat <- as.matrix(x[, -1])
+  rownames(mat) <- x$Genes
+  mat
+}
+seq_dat <- toMat(seq_dat)
+seq_dat <- seq_dat[-c(which(rowSums(seq_dat) == 0)), ]
+dgeObj <- edgeR::DGEList(counts = seq_dat,
+                         group = clin_df$IO_Response)
+
+# Creating Design Matrices #
+design <- model.matrix(~0+dgeObj$samples$group)
+colnames(design) <- c("Responder", "Non_Responder")
+contrastMat <- makeContrasts(
+  RvsNR = Responder - Non_Responder,
+  levels = colnames(design)
+)
+
+v <- voom(dgeObj, design)
+
+vfit <- lmFit(dgeObj$counts, design)
+vfit <- contrasts.fit(vfit, contrasts = contrastMat)
+efit <- eBayes(vfit, trend = TRUE)
+
+RvNR <- topTreat(efit, coef = 1, n = Inf)
+RvNR <- RvNR %>%
+  dplyr::mutate(Expression = dplyr::case_when(logFC >= 1 & adj.P.Val <= 0.1 ~ "Up",
+                                  logFC <= -1 & adj.P.Val <= 0.1 ~ "Down",
+                                  TRUE ~ "Unchanged")
+  )
+DEG <- RvNR %>%
+  dplyr::filter(Expression == "Up" | Expression == "Down")
+
+
+DEG_Plot <- ggplot(RvNR, aes(x = logFC, y = -log10(P.Value))) +
+    ggplot2::geom_point(aes(color = Expression)) + 
+    labs(y = "FDR", title = "Differentially Expressed Genes") +
+    theme(plot.title = element_text(face = "bold", size = 12, hjust = 0.5)) +
+    scale_color_manual(values = c("grey", "red3")) +
+    guides(colour = guide_legend(override.aes = list(size=1.5))) +
+    geom_label_repel(data = DEG,
+                     mapping = aes(logFC, -log(P.Value, 10), label = ID),
+                     size = 2)
+
+
+# Final DEG Plot Output #
+DEG_Plot  
+```
+
+
+### Gene Set Enrichment Analysis Plot ###
+
+**Data Required**  
+- Gene Set Enrichment Results from GSEA (Java)
+```{r GSEA Data, include=FALSE}
+gseaHallDat <- readr::read_tsv("Data/GSEA_Hallmark.txt")
+gseaTIMExDat <- readr::read_tsv("Data/GSEA_TIMEx.txt")
+```
+
+```{r Generate Hallmark Plot}
+gseaHallDat <- gseaHallDat %>%
+  dplyr::filter(FDR <= 0.1) %>%
+  dplyr::arrange(desc(NES)) %>%
+  dplyr::mutate(
+    Direction = ifelse(NES > 0, "Up", "Down")
+  )
+gseaHallDat$`Gene Set` <- factor(gseaHallDat$`Gene Set`, levels = unique(gseaHallDat$`Gene Set`))
+Hallmark_Order <- rev(levels(gseaHallDat$`Gene Set`))
+
+GSEA_Hall_Plot <- ggplot2::ggplot(gseaHallDat, aes(x = NES, y = forcats::fct_relevel(`Gene Set`, Hallmark_Order), fill = Direction)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("cornflowerblue", "red3")) +
+  labs(y = "Hallmark Gene Sets", 
+       x = "Normalized Enrichment Score",
+       title = "Hallmark Gene Set Enrichment Analysis") +
+  theme(
+    plot.title = element_text(face = 'bold', hjust = 0.5),
+    panel.background = element_rect(fill = 'white'),
+    axis.line = element_line(linewidth = 0.5, colour = "black"),
+    panel.grid.major.x = element_line(linewidth = 0.1, color = 'black')
+  ) + 
+  geom_vline(xintercept = 0)
+
+
+GSEA_Hall_Plot 
+```
+
+```{r Generate TIMEx Plot}
+gseaTIMExDat <- gseaTIMExDat %>%
+  dplyr::filter(FDR <= 0.1) %>%
+  dplyr::arrange(desc(NES)) %>%
+  dplyr::mutate(
+    Direction = ifelse(NES > 0, "Up", "Down")
+  )
+gseaTIMExDat$`Gene Set` <- factor(gseaTIMExDat$`Gene Set`, levels = unique(gseaTIMExDat$`Gene Set`))
+TIMEx_Order <- rev(levels(gseaTIMExDat$`Gene Set`))
+
+GSEA_TIMEx_Plot <- ggplot2::ggplot(gseaTIMExDat, aes(x = NES, y = forcats::fct_relevel(`Gene Set`, TIMEx_Order), fill = Direction)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("cornflowerblue", "red3")) +
+  labs(y = "TIMEx Cell Types", 
+       x = "Normalized Enrichment Score",
+       title = "TIMEx Gene Set Enrichment Analysis") +
+  theme(
+    plot.title = element_text(face = 'bold', hjust = 0.5),
+    panel.background = element_rect(fill = 'white'),
+    axis.line = element_line(linewidth = 0.5, colour = "black"),
+    panel.grid.major.x = element_line(linewidth = 0.1, color = 'black')
+  ) + 
+  geom_vline(xintercept = 0)
+
+
+GSEA_TIMEx_Plot
+```
+
+
+

@@ -1,0 +1,135 @@
+---
+title: "exomel - stacked bar"
+author: "Caroline Wheeler"
+date: "7/26/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(ggplot2)
+library(RColorBrewer)
+library(forcats)
+library(ggforce)
+library(patchwork)
+```
+
+read in data 
+```{r}
+taxa <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_RA-with-taxonomy.csv")
+clin <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE) %>%
+  dplyr::rename("sample" = Sample_ID) %>%
+  filter(Cancer_Type == "Melanoma")
+```
+
+filter to iorig/exorien overlap
+```{r}
+taxa <- taxa %>%
+  filter(taxa$sample %in% clin$sample)
+```
+
+```{r}
+get_phyl_ra <- function(exora){
+  exora.phyl <- exora %>%
+  filter(microbe != "Homo.sapiens") %>%
+  group_by(sample, phylum) %>%
+  summarise(ra = sum(exo.ra, na.rm = T)) %>%
+  as.data.frame()
+}
+```
+
+```{r}
+taxa <- taxa %>%
+  filter(!is.na(phylum))
+
+exora.p <- get_phyl_ra(taxa)
+
+large.phyls <- exora.p %>% 
+  group_by(phylum) %>%
+  dplyr::summarize(median.ra = median(ra)) %>%
+  arrange(desc(median.ra)) %>%
+  mutate(x = row_number()) %>%
+  dplyr::filter(x <= 7)
+
+large.phyls <- large.phyls$phylum
+tmp <- exora.p %>% arrange(desc(ra))
+sampord.orter <- tmp$sample
+```
+
+combine with response data
+```{r}
+exora.p.hist <- merge(clin, exora.p)
+```
+
+```{r}
+exora.p.hist <- exora.p.hist %>%
+  mutate(phylum = ifelse(phylum %in% large.phyls, phylum, "Other"),
+         phylum = gsub("^p__", "", phylum),
+         phylum = ifelse(phylum == "unclassified-o__Ortervirales", "Ortervirales", 
+         ifelse(phylum == "unclassified-o__Caudovirales", "Caudovirales", phylum)))
+```
+
+prep for plot
+```{r}
+proteo <- exora.p.hist %>%
+  filter(phylum == "Uroviricota") %>%
+  dplyr::rename(proteo_ra = "ra") %>%
+  select(sample, proteo_ra)
+
+proteo <- proteo[order(proteo$proteo_ra),]
+plotOrder <- proteo$sample
+exora.p.hist <- merge(proteo, exora.p.hist)
+exora.p.hist <- exora.p.hist %>%
+  dplyr::mutate(sample = fct_reorder(sample, dplyr::desc(proteo_ra)))
+exora.p.hist$phylum <- factor(exora.p.hist$phylum, levels = c("Other", "Actinobacteria", "Apicomplexa", "Ascomycota", "Bacteroidetes", "Firmicutes", "Proteobacteria", "Uroviricota"))
+
+exora.p.hist <- exora.p.hist %>%
+  mutate(Response = ifelse(Response == 0, "Non-Responder", "Responder"))
+```
+
+plot
+```{r}
+g <- exora.p.hist %>% 
+  ggplot(aes(x = sample, y = ra, fill = phylum)) +
+    geom_bar(position="fill", stat = "identity") +
+    labs(x = "", y = "") +
+    scale_fill_manual(values = c("darkslateblue","red3","cyan4", "darkgoldenrod2", "darkgreen", "salmon2", "cornflowerblue", "deeppink4"), name = "Taxa") +
+    theme_minimal(base_size = 12) +
+    theme(axis.text.x = element_blank(), 
+          axis.ticks.x = element_blank(),
+          axis.text.y = element_blank(),
+          panel.grid.major = element_blank())  +
+  facet_row(vars(Response), scales = "free_x", space = "free") +
+   theme(
+    text = element_text(size = 14)
+  ) 
+g
+
+ggsave(g, file = "../figures/fig1_stackedbar.png", dev = "png", width = 9, height = 6)
+#ggsave(g, file = "../figures/fig1_stackedbar.svg", dev = "svg", width = 7, height = 6)
+```
+
+grant version
+```{r}
+g <- exora.p.hist %>% 
+  ggplot(aes(x = sample, y = ra, fill = phylum)) +
+    geom_bar(position="fill", stat = "identity") +
+    labs(x = "", y = "") +
+    scale_fill_manual(values = c("darkslateblue","red3","cyan4", "darkgoldenrod2", "darkgreen", "salmon2", "cornflowerblue", "deeppink4"), name = "Taxa") +
+    theme_minimal(base_size =10) +
+    theme(axis.text.x = element_blank(), 
+          axis.ticks.x = element_blank(),
+          axis.text.y = element_blank(),
+          panel.grid.major = element_blank())  +
+  facet_row(vars(Response), scales = "free_x", space = "free") +
+   theme(
+    text = element_text(size = 10)
+  ) +
+   theme(legend.position="bottom")
+g
+
+ggsave(g, file = "../figures/grantVersion_stackedbar.svg", dev = "svg", width = 4, height = 6)
+```
+

@@ -1,0 +1,240 @@
+---
+title: "Supplementary Materials"
+output: html_document
+date: "2023-02-10"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Supplementary Figures #
+**Included Figures**  
+-Mann Whitney U Test Boxplots  
+-AUC and Mann Whitney table  
+-AUC Comparison Plot  
+
+**Necessary Data**  
+-IO_NOVA_Mel expression data  
+-IO_NOVA_Mel clinical data  
+-IO_NOVA_Mel AUROC Data  
+-IOSig_Signatures  
+-IOSig AUC Values  
+
+```{r Necessary Packages, include=FALSE}
+library(tidyverse)
+```
+
+### Mann Whitney Boxplots ###
+
+```{r Necessary Functions}
+calculateScore <- function(sig_data, sig_titles, seq_data){
+  seq_data <- as.data.frame(seq_data)
+  sig_data <- as.data.frame(sig_data)
+
+  if(sig_titles == 'Buffa'){
+    Buffa_Score <- seq_data %>%
+      dplyr::filter(Genes %in% sig_data$X1) %>%
+      tidyr::gather(-Genes, key = "Sample_ID", value = "counts") %>%
+      dplyr::group_by(Genes) %>%
+      dplyr::mutate(cut = median(counts)) %>%
+      dplyr::ungroup() %>%
+      dplyr::mutate(score.comp = ifelse(counts > cut, 1, -1)) %>%
+      dplyr::group_by(Sample_ID) %>%
+      dplyr::summarise(buffa_score = sum(score.comp)) %>%
+      dplyr::mutate(category = ifelse(buffa_score > mean(buffa_score), 'high', 'low'))
+
+    return(Buffa_Score)
+
+  }
+  if(sig_titles == "Mitoscore"){
+    MitoScore <- seq_data %>%
+      dplyr::filter(Genes %in% sig_data$X1) %>%
+      tidyr::gather(-Genes, key = "Sample_ID", value = "counts") %>%
+      dplyr::mutate(logged.count = log2(counts+1)) %>%
+      dplyr::group_by(Sample_ID) %>%
+      dplyr::summarise(MitoScore = mean(logged.count)) %>%
+      dplyr::mutate(category = ifelse(MitoScore > mean(MitoScore), 'high', 'low'))
+
+    return(MitoScore)
+
+  }
+  else{
+    # Z Score #
+    Z_Score <- seq_data %>%
+      tidyr::pivot_longer(-Genes, names_to = "Sample_ID", values_to = "counts" )%>%
+      dplyr::filter(Genes %in% sig_data$X1)%>%
+      dplyr::group_by(Genes)%>%
+      dplyr::mutate(Average = mean(counts), std_dev = sd(counts))%>%
+      dplyr::filter(Average != 0) %>%
+      dplyr::filter(std_dev != 0) %>%
+      dplyr::ungroup()%>%
+      dplyr::mutate(Z = (counts - Average) / std_dev)%>%
+      dplyr::group_by(Sample_ID)%>%
+      dplyr::summarize(z_score = mean(Z)) %>%
+      dplyr::mutate(category = ifelse(z_score > mean(z_score), 'high', 'low'))
+
+    return(Z_Score)
+  }
+  
+}
+joinData <- function(scored_dat, clin_data){
+  out <- dplyr::inner_join(scored_dat, clin_data, by = "Sample_ID")
+  out
+}
+mannWhitTest <- function(input, input_name){
+  input <- as.data.frame(input)
+
+  responder <- dplyr::filter(input, response == 1)
+  responder <- responder[, c(2,7)]
+  non_responder <- dplyr::filter(input, response == 0)
+  non_responder <- non_responder[, c(2,7)]
+  
+  out <- wilcox.test(responder[, 1], non_responder[, 1],
+                     mu = 0, alt ='two.sided',
+                     conf.int = T, conf.level=0.95,
+                     paired=FALSE, exact=T)
+  out <- data.frame("Signature" = input_name, "P_Value" = out$p.value)
+  out
+}
+plotBoxplots <- function(input, name, MW_dat){
+  input <- as.data.frame(input)
+  input$response <- ifelse(input$response == 1, 'Responder', "Non-Responder")
+  ggplot2::ggplot(input, ggplot2::aes(x=as.factor(response), y=z_score, color = as.factor(response))) +
+      ggplot2::geom_boxplot(outlier.shape = NA) + 
+      ggplot2::geom_point(position= ggplot2::position_jitterdodge()) +
+      ggplot2::labs(title = name, 
+                    y="Average Z Score", 
+                    x="Responder Status", 
+                    color = 'Response',
+                    subtitle = paste0("Adjusted P Value: ", MW_dat),
+                    caption = "Method: Z Score") +
+      ggplot2::theme(plot.title = ggplot2::element_text(face = 'bold', 
+                                                        hjust = 0.5, 
+                                                        size = 12),
+                     legend.title = ggplot2::element_text(face = 'bold', 
+                                                          size = 7),
+                     legend.text = ggplot2::element_text(size = 7),
+                     axis.title = ggplot2::element_text(face = 'bold', 
+                                                        size = 9),
+                     axis.text = ggplot2::element_text(size = 7),
+                     plot.caption = ggplot2::element_text(size = 7),
+                     axis.line = ggplot2::element_line(color = "black", 
+                                                       linewidth = 0.5),
+                     panel.border = ggplot2::element_rect(color = 'black', 
+                                                          fill = NA, 
+                                                          linewidth = 1),
+                     panel.background = ggplot2::element_rect(fill = 'white')) +
+      ggplot2::scale_x_discrete(labels = c('NR','R')) +
+      ggplot2::scale_color_manual("Response Type", values = c("#4582ec", "#d9534f"))
+}
+AurocHeat <- function(user_data, default_dat){
+  
+  c_data <- dplyr::bind_rows(user_data, default_dat)
+  
+  c_data <- c_data %>%
+    dplyr::group_by(Signature) %>%
+    dplyr::mutate(Average = mean(AUC)) %>%
+    dplyr::ungroup() %>%
+    dplyr::arrange(desc(Average))
+  
+  avg_data <- c_data %>%
+    dplyr::group_by(Signature) %>%
+    dplyr::select(Signature, Average) %>%
+    unique() %>%
+    dplyr::mutate(Cohort = 'Average')
+  colnames(avg_data)[which(colnames(avg_data) == 'Average')] <- 'AUC'
+  
+  c_data <- dplyr::bind_rows(c_data, avg_data)
+  
+  
+  c_data$Signature <- factor(c_data$Signature, levels = unique(c_data$Signature))
+  rev_order <- rev(levels(c_data$Signature))
+  
+    out <- ggplot2::ggplot(c_data, ggplot2::aes(Cohort, y = forcats::fct_relevel(Signature, rev_order),
+                                                fill = ifelse(AUC >= 0.5, AUC, NA))) + ggplot2::geom_tile(color = 'white') +
+      ggplot2::scale_x_discrete(position = 'top') +
+      ggplot2::geom_text(ggplot2::aes(label = round(AUC, 2)), size = 3) +
+      ggplot2::scale_fill_distiller(palette = 'Reds', direction = 1, name = 'AUROC', guide = 'colorbar', na.value = 'white') +
+      ggplot2::theme(axis.text.y = ggplot2::element_text(face = 'bold', size = 12),
+                     axis.text.x = ggplot2::element_text(face = 'bold', angle = 90, size = 12),
+                     axis.title.y = ggplot2::element_text(face = 'bold', size = 16),
+                     axis.title.x = ggplot2::element_text(face = 'bold', size = 16),
+                     plot.title = ggplot2::element_text(hjust = 0.5, face = 'bold', size = 18)) +
+      ggplot2::labs(title = 'Gene Signature AUROC Performance', x = 'Cohorts', y = 'Gene Signature') +
+      ggplot2::coord_equal()
+
+
+  
+  out
+}
+```
+
+```{r Load Mann Whit Data, include=FALSE}
+seq_data <- readr::read_tsv("Data/IO_NOVA_mel_seq.txt")
+clin_data <- readr::read_tsv("Data/IO_NOVA_mel_clin.txt")
+load("Data/IOSig_Signatures.rda")
+```
+
+```{r Prepare Data}
+Scored_Data <- purrr::map2(IOSig_Signatures, names(IOSig_Signatures), calculateScore, seq_data = seq_data)
+Joined_Data <- lapply(Scored_Data, joinData, clin_data = clin_data)
+```
+
+```{r Mann Whitney U Test, include=FALSE}
+Mann_Whitney_Out <- purrr::map2_dfr(Joined_Data, names(Joined_Data), mannWhitTest)
+Mann_Whitney_Out$Adj.P.Val <- p.adjust(Mann_Whitney_Out$P_Value, method = "BH")
+Mann_Whitney_Out$P_Value <- round(Mann_Whitney_Out$P_Value, 5)
+Mann_Whitney_Out$Adj.P.Val <- round(Mann_Whitney_Out$Adj.P.Val, 5)
+```
+
+```{r Mann Whitney Boxplots}
+Significant_MW <- Mann_Whitney_Out %>%
+  dplyr::filter(Adj.P.Val < 0.1) %>%
+  dplyr::arrange(Adj.P.Val, P_Value)
+Sig_Joined_Dat <- Joined_Data[Significant_MW$Signature]
+
+mwBoxplots <- purrr::pmap(list(Sig_Joined_Dat, 
+                               names(Sig_Joined_Dat), 
+                               Significant_MW$Adj.P.Val), 
+                          plotBoxplots)
+mwBoxplots <- ggpubr::ggarrange(plotlist = mwBoxplots, ncol = 4, nrow = 4)
+
+mwBoxplots
+```
+
+### AUROC / Mann Whitney Table ###
+
+```{r Load AUROC/MW data}
+AUROC_data <- readr::read_tsv("Data/IO_NOVA_mel_seq_AUROC_table.txt")
+```
+
+```{r Generate Table}
+AUC_MW_table <- dplyr::inner_join(AUROC_data, Mann_Whitney_Out, by = "Signature") %>%
+  dplyr::select(Signature, AUC, P_Value, Adj.P.Val) %>%
+  dplyr::arrange(desc(AUC))
+colnames(AUC_MW_table) <- c("Signature", "AUC", "Mann Whitney P Value", "Mann Whitney Adj. P Value")
+readr::write_tsv(AUC_MW_table, file = "Output/AUC_MW_table.txt")
+AUC_MW_table
+```
+### AUROC Comparison Plot ###
+
+```{r Load AUROC Plot data}
+load("Data/IOSig_AUC_vals.rda")
+```
+
+```{r Generate Plot}
+AUROC_data <- AUROC_data %>%
+  dplyr::select(AUC, Signature)
+AUROC_data$Cohort <- "IO_NOVA_Mel"
+
+AUROC_Plot <- AurocHeat(AUROC_data, all_AUC)
+
+AUROC_Plot
+```
+
+
+
+
+
+
