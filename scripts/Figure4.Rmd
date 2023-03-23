@@ -17,7 +17,7 @@ size results as seen in figure 4.
 library(tidyverse)
 library(ComplexHeatmap)
 library(GSVA)
-library(ggpubr)
+#library(ggpubr)
 ```
 
 
@@ -27,7 +27,7 @@ library(ggpubr)
 - Microbe Data
 
 ```{r Load and format required data}
-data <- readRDS("Data/deseqResults.RDS")
+data <- readRDS("../data/deseqResults.RDS")
 data <- data %>%
   filter(level == "species" & !is.na(delabel))
 
@@ -62,12 +62,12 @@ Microbe_Effect_Size
 - TIMEx Cell Types  
 - IOSig Gene Set
 ```{r Load in required data, include=FALSE}
-seq_data <- readr::read_tsv("Data/IO_NOVA_mel_seq.txt")
-clin_data <- readr::read_tsv("Data/IO_NOVA_mel_clin.txt")
-microbe_data <- readr::read_csv("Data/Microbes.csv")
-load("Data/Hallmark.rda")
-load("Data/TIMEx.rda")
-load("Data/IOSig_geneset.rda")
+seq_data <- readr::read_tsv("../data/IO_NOVA_mel_seq.txt")
+clin_data <- readr::read_tsv("../data/IO_NOVA_mel_clin.txt")
+microbe_data <- readr::read_csv("../data/Microbes.csv")
+load("../data/Hallmark.rda")
+load("../data/TIMEx.rda")
+load("../data/IOSig_geneset.rda")
 seq_data <- seq_data[!duplicated(seq_data$Genes), ]
 ```
 
@@ -172,16 +172,24 @@ TIMEx_clust <- clustHeat(TIMEx_Micro, TIMEx, microbe_data, microbe_order, "TIMEx
 IOSig_clust <- clustHeat(GeneSig_Micro, IOSig_geneset, microbe_data, microbe_order, "IOSig Signatures", x.text = 8)
 ```
 
-```{r Combine Plots}
-clustered_plots <- ggarrange(Hall_clust,
-                             TIMEx_clust,
-                             IOSig_clust,
-                             nrow = 3, ncol = 1, common.legend = T)
-
-Combined_Plots <- ggarrange(clustered_plots, Microbe_Effect_Size, ncol = 2)
-
-Combined_Plots
+save heatmap objects
+```{r}
+saveRDS(Hall_clust, file = "../data/Hall_clust.rds")
+saveRDS(TIMEx_clust, file = "../data/TIMEx_clust.rds")
+saveRDS(IOSig_clust , file = "../data/IOSig_clust .rds")
 ```
+
+
+<!-- ```{r Combine Plots} -->
+<!-- clustered_plots <- ggarrange(Hall_clust, -->
+<!--                              TIMEx_clust, -->
+<!--                              IOSig_clust, -->
+<!--                              nrow = 3, ncol = 1, common.legend = T) -->
+
+<!-- Combined_Plots <- ggarrange(clustered_plots, Microbe_Effect_Size, ncol = 2) -->
+
+<!-- Combined_Plots -->
+<!-- ``` -->
 
 
 
