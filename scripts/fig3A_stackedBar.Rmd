@@ -96,40 +96,40 @@ g <- exora.p.hist %>%
     geom_bar(position="fill", stat = "identity") +
     labs(x = "", y = "") +
     scale_fill_manual(values = c("darkslateblue","red3","cyan4", "darkgoldenrod2", "darkgreen", "salmon2", "cornflowerblue", "deeppink4"), name = "Taxa") +
-    theme_minimal(base_size = 12) +
+    theme_minimal(base_size = 7) +
     theme(axis.text.x = element_blank(), 
           axis.ticks.x = element_blank(),
           axis.text.y = element_blank(),
           panel.grid.major = element_blank())  +
   facet_row(vars(Response), scales = "free_x", space = "free") +
    theme(
-    text = element_text(size = 14)
-  ) 
+    text = element_text(size = 7), legend.position = "bottom") 
+
 g
 
-ggsave(g, file = "../figures/fig1_stackedbar.png", dev = "png", width = 9, height = 6)
+ggsave(g, file = "../figures/fig3_stackedbar.png", dev = "png", width = 4.5, height = 4)
 #ggsave(g, file = "../figures/fig1_stackedbar.svg", dev = "svg", width = 7, height = 6)
 ```
 
-grant version
-```{r}
-g <- exora.p.hist %>% 
-  ggplot(aes(x = sample, y = ra, fill = phylum)) +
-    geom_bar(position="fill", stat = "identity") +
-    labs(x = "", y = "") +
-    scale_fill_manual(values = c("darkslateblue","red3","cyan4", "darkgoldenrod2", "darkgreen", "salmon2", "cornflowerblue", "deeppink4"), name = "Taxa") +
-    theme_minimal(base_size =10) +
-    theme(axis.text.x = element_blank(), 
-          axis.ticks.x = element_blank(),
-          axis.text.y = element_blank(),
-          panel.grid.major = element_blank())  +
-  facet_row(vars(Response), scales = "free_x", space = "free") +
-   theme(
-    text = element_text(size = 10)
-  ) +
-   theme(legend.position="bottom")
-g
+<!-- grant version -->
+<!-- ```{r} -->
+<!-- g <- exora.p.hist %>%  -->
+<!--   ggplot(aes(x = sample, y = ra, fill = phylum)) + -->
+<!--     geom_bar(position="fill", stat = "identity") + -->
+<!--     labs(x = "", y = "") + -->
+<!--     scale_fill_manual(values = c("darkslateblue","red3","cyan4", "darkgoldenrod2", "darkgreen", "salmon2", "cornflowerblue", "deeppink4"), name = "Taxa") + -->
+<!--     theme_minimal(base_size =10) + -->
+<!--     theme(axis.text.x = element_blank(),  -->
+<!--           axis.ticks.x = element_blank(), -->
+<!--           axis.text.y = element_blank(), -->
+<!--           panel.grid.major = element_blank())  + -->
+<!--   facet_row(vars(Response), scales = "free_x", space = "free") + -->
+<!--    theme( -->
+<!--     text = element_text(size = 10) -->
+<!--   ) + -->
+<!--    theme(legend.position="bottom") -->
+<!-- g -->
 
-ggsave(g, file = "../figures/grantVersion_stackedbar.svg", dev = "svg", width = 4, height = 6)
-```
+<!-- ggsave(g, file = "../figures/grantVersion_stackedbar.svg", dev = "svg", width = 4, height = 4) -->
+<!-- ``` -->
 

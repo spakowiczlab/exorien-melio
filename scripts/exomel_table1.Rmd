@@ -24,9 +24,9 @@ response <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt",
 
 io <- read.csv("../data/pfs_IO.csv") %>%
   rename("AvatarKey" = id) %>%
-  select(AvatarKey, medication, OS_IO_Y) %>%
+  select(AvatarKey, medication, OS_IO_M) %>%
   rename("IO" = medication,
-         "PFS" = OS_IO_Y)
+         "PFS" = OS_IO_M)
 
 # Is OS the same as PFS? in this data? average this? 
 
