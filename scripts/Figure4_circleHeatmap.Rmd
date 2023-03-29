@@ -1,7 +1,8 @@
 ---
-title: "Figure 4"
+title: "circle heatmap"
+author: "Caroline Wheeler"
+date: "3/24/2023"
 output: html_document
-date: "2023-02-09"
 ---
 
 ```{r setup, include=FALSE}
@@ -47,10 +48,9 @@ Microbe_Effect_Size <- data %>%
   ylab("Species") +
   xlab("Effect Size") +
   scale_fill_manual(values=c("red3", "cyan4", "darkgreen", "darkgoldenrod2", "salmon2", "cornflowerblue", "deeppink4")) +
-  theme_minimal()
+  theme(legend.key.size = unit(1, 'cm'), legend.title = element_text(size=10), legend.text = element_text(size=8), axis.text =element_text(size = 10), axis.title=element_text(size=10))
 
 Microbe_Effect_Size
-ggsave(file = "../figures/effectSize.png", dev = "png", width = 11, height = 8, dpi = 600)
 ```
 
 ### Single single Gene Set Enrichment Analysis ###
@@ -135,6 +135,63 @@ TIMEx_Micro <- combineDat(TIMEx_results, microbe = microbe_data)
 ```
 
 ```{r}
+  ggplot(aes(x=as.numeric(as.factor(Gene_Set)), y=as.numeric(Microbe), fill=value)) +
+  geom_tile(show.legend = FALSE, color = "black") +
+  scale_fill_gradient2(low = "#075AFF",
+                       mid = "#FFFFCC",
+                       high = "#FF0000") +
+  geom_text(data = lab.df, inherit.aes = FALSE, aes(x = as.numeric(x), y = 70, label = labs, angle=ang, hjust=hjust), size=1.2) + 
+  ylim(c(10,90)) +
+  xlim(c(0, 150)) +
+  theme_void() +
+  coord_polar() 
+```
+
+Hall_clust plot
+```{r}
+Cor_Dat <- cor(Hall_Micro[, -1], method = "spearman")
+
+gs_labels <- names(Hallmark)
+
+Filtered_Dat <- reshape2::melt(Cor_Dat) %>%
+  dplyr::rename(Gene_Set = Var1, Microbe = Var2) %>%
+  dplyr::filter(Gene_Set %in% gs_labels,
+                Microbe %in% colnames(microbe_data)[-1])
+
+Filtered_Dat$Gene_Set <- stringr::str_remove_all(Filtered_Dat$Gene_Set, "HALLMARK_")
+
+GS <- tidyr::pivot_wider(Filtered_Dat, names_from = "Gene_Set", values_from = "value")
+GS <- as.matrix(GS[, -1]) # -1 to omit categories from matrix
+
+# Cluster based on euclidean distance
+clust <- hclust(dist(t(GS)))
+
+ggplot(Filtered_Dat, aes(x=as.numeric(as.factor(Gene_Set)), y=as.numeric(Microbe), fill=value)) +
+ geom_tile(color = "black") +
+    scale_fill_gradient2(low = "#075AFF",
+                       mid = "#FFFFCC",
+                       high = "#FF0000") +
+  theme(axis.text.x = element_text(angle = 45, hjust=1, size = 6),
+        axis.text.y = element_text(size = 10),
+        legend.position = 'bottom') +
+  scale_x_discrete(limits = as.numeric(as.factor(colnames(GS)[clust$order]))) +
+  scale_y_discrete(limits = rev(microbe_order)) +
+  theme_void() +
+  coord_fixed()
+```
+
+TIMEx plot
+```{r}
+
+```
+
+IOSig plot
+```{r}
+
+```
+
+old version
+```{r}
 clustHeat <- function(dat, gene_set, microbeDat, microbeOrder, title, x.text){
   Cor_Dat <- cor(dat[, -1], method = "spearman")
 
@@ -172,27 +229,4 @@ Hall_clust <- clustHeat(Hall_Micro, Hallmark, microbe_data, microbe_order, "Hall
 TIMEx_clust <- clustHeat(TIMEx_Micro, TIMEx, microbe_data, microbe_order, "TIMEx Cell Types", x.text = 8)
 IOSig_clust <- clustHeat(GeneSig_Micro, IOSig_geneset, microbe_data, microbe_order, "IOSig Signatures", x.text = 8)
 ```
-
-save heatmap objects
-```{r}
-saveRDS(Microbe_Effect_Size, file = "../data/Microbe_Effect_Size.rds")
-saveRDS(Hall_clust, file = "../data/Hall_clust.rds")
-saveRDS(TIMEx_clust, file = "../data/TIMEx_clust.rds")
-saveRDS(IOSig_clust , file = "../data/IOSig_clust .rds")
-```
-
-
-<!-- ```{r Combine Plots} -->
-<!-- clustered_plots <- ggarrange(Hall_clust, -->
-<!--                              TIMEx_clust, -->
-<!--                              IOSig_clust, -->
-<!--                              nrow = 3, ncol = 1, common.legend = T) -->
-
-<!-- Combined_Plots <- ggarrange(clustered_plots, Microbe_Effect_Size, ncol = 2) -->
-
-<!-- Combined_Plots -->
-<!-- ``` -->
-
-
-
 
