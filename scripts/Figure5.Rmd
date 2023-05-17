@@ -26,10 +26,10 @@ library(ggpubr)
 ```
 
 ```{r Load in Data, include=FALSE}
-load("Data/Scored_IO_NOVA.rda")
-load("Data/IOSig_Signatures.rda")
-microbe_data <- readr::read_csv("Data/Microbes.csv")
-clin_data <- readr::read_tsv("Data/IO_NOVA_mel_clin.txt")
+load("../data/Scored_IO_NOVA.rda")
+load("../data/IOSig_Signatures.rda")
+microbe_data <- readr::read_csv("../data/Microbes.csv")
+clin_data <- readr::read_tsv("../data/IO_NOVA_mel_clin.txt")
 ```
 
 ```{r Necessary Functions}
@@ -245,5 +245,41 @@ Model_Comparison_Plot
 ```
 
 
+# NCI R01 version 
+```{r}
+grant.ver <- Results %>%
+  filter(Model %in% c('Microbe', 'Imm_Act_Z_Score', 'Imm_Act_Z_Microbe'))
+
+Model_Comparison_Plot <- ggplot(grant.ver , aes(x = forcats::fct_relevel(Model, mean_order), y = AUROC, color = Model)) +
+  geom_boxplot(outlier.colour = NA, fatten = NULL) + 
+  geom_jitter() +
+  labs(y = "AUROC", x = "") +
+  theme(axis.title = element_text(face = 'bold', size = '9'),
+        axis.text.x = element_text(size = 9, face = 'bold'),
+        plot.title = element_text(face = 'bold', hjust = 0.5, size = 9),
+        axis.title.y = element_text(hjust = 0.45),
+        legend.position = "none",
+        axis.line = element_line(color = 'black', linewidth = 0.5),
+        panel.background = element_rect(fill = 'white')) +
+  #scale_y_continuous(limits= c(0, 1.35), breaks=seq(0,1, 0.1)) +  # 1.35
+
+  scale_color_manual(values = c("#332288", "#999933", "chocolate"))
+
+significant_comparisons <- list(
+  c("Microbe", "Imm_Act_Z_Score"),
+  c("Microbe", "Imm_Act_Z_Microbe")
+)
+
+Model_Comparison_Plot <- Model_Comparison_Plot +
+     ggpubr::stat_compare_means(comparisons = significant_comparisons, 
+                                label = 'p.signif', 
+                                label.y = seq(0.95, by = 0.1, length.out = 4)) + 
+  stat_summary(geom = "errorbar", fun.min = mean, fun = mean, fun.max = mean, width = .75)
+
+
+Model_Comparison_Plot
+
+ggsave(Model_Comparison_Plot, file = "../figures/grantVersion_AUCboxplots.svg", dev = "svg", width = 3, height = 3, dpi = 600)
+```
 
 
