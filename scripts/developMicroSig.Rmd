@@ -1,0 +1,129 @@
+---
+title: "develop microsig"
+author: "Caroline Wheeler"
+date: "4/27/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+```
+
+load test data
+```{r}
+# read in metmel sigs
+sigs <- read.csv("../data/signatures-filtered-metastatic-melanoma_20221207.csv")
+
+response <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE) %>%
+  dplyr::rename("sample" = Sample_ID,
+                "response" = Response) %>%
+  filter(Cancer_Type == "Melanoma") %>%
+  dplyr::select(sample, response) %>%
+  mutate(response = ifelse(response == 1, "responder", "non-responder"))
+
+# read in microbe data from exorien-melio 
+taxa_all <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_RA-with-taxonomy.csv") %>%
+  filter(sample %in% response$sample)
+
+  #mutate(Taxonomy = ifelse(grepl("d__Bacteria", Taxonomy), sub('d','k',Taxonomy), Taxonomy))
+taxa <- taxa_all %>%
+  select(sample, species, exo.ra) %>%
+  rename(microbe = species)
+```
+
+
+get relAbun at all levels and combine into one table
+```{r}
+# @level is a string containing the taxonomic level we want to calculate relative abundances for
+get_ra <- function(level){
+  df <- taxa_all %>%
+    group_by(sample, !!! rlang::syms(level)) %>%
+    summarize(exo.ra = sum(exo.ra)) %>%
+    rename(microbe = level)
+  
+  return(df)
+}
+dom <- get_ra("domain")
+king <- get_ra("kingdom")
+phyl <- get_ra("phylum")
+class <- get_ra("class")
+ord<- get_ra("order")
+fam <- get_ra("family")
+gen <- get_ra("genus")
+taxa <- rbind(taxa, dom, king, phyl, class, ord, fam, gen)
+```
+
+get individual signatures for testing
+```{r}
+#689
+frankelSig_up <- sub("^.+\\|", "", unlist(strsplit(sigs$MetaPhlAn.taxon.names[5],",")))
+#679
+matsonSig_up <- sub("^.+\\|", "", unlist(strsplit(c(sigs$MetaPhlAn.taxon.names[6],sigs$MetaPhlAn.taxon.names[7]), ",")))
+matsonSig_down <- sub("^.+\\|", "", unlist(strsplit(sigs$MetaPhlAn.taxon.names[8],",")))
+#688
+gopaSig_up <- sub("^.+\\|", "", unlist(strsplit(sigs$MetaPhlAn.taxon.names[3] ,",")))
+gopaSig_down <- sub("^.+\\|", "",unlist(strsplit(sigs$MetaPhlAn.taxon.names[4], ",")))
+#691
+windSig_up <- sub("^.+\\|", "", unlist(strsplit(sigs$MetaPhlAn.taxon.names[1] ,",")))
+windSig_down <- sub("^.+\\|", "", unlist(strsplit(sigs$MetaPhlAn.taxon.names[2] ,",")))
+
+paa_up <- c("s__Clostridium sp. UNK-MGS-6", "s__Firmicutes bacterium CAG 41", "s__Coprobacillus cateniformis", "s__Clostridia bacterium UC5-1-2G4","s__Streptococcus dysgalactiae", "s__Acidaminococcus sp. HPA0509", "s__Roseburia sp.CAG-303", "s__Butyrivibrio_sp. AE2032", "s__Coprobacillus sp. 29-1", "s__Coprobacillus sp. D6")
+paa_down <- c("s__Alistipes sp. CAG-435", "s__Fusobacterium hwasookii", "s__Leuconostoc sp. DORA-2", "s__Paenibacillus lentimorbus", "s__Fusobacterium sp. oral taxon 370", "s__Alcanivorax hongdengensis", "s__Arthrobacter sp. LS16", "s__Bacillus sp. 5B6", "s__Bacillus velezensis", "s__Fusobacterium sp. OBRC1")
+```
+
+
+# Main microsig score function
+```{r}
+calculateMicroSigScore2 <- function(sig.up, sig.down, taxa){
+  df <- taxa %>%
+    dplyr::group_by(sample) %>%
+    dplyr::mutate(z_score = scale(exo.ra))
+  
+  upMics <- df %>%
+    dplyr::filter(microbe %in% sig.up)
+  
+  upTotal <- length(unique(upMics$microbe))
+  
+  upMics <- upMics %>%  
+    dplyr::group_by(sample) %>%
+    dplyr::summarize(tempUp = sum(exo.ra))
+  
+  downMics <- df %>%
+    dplyr::filter(microbe %in% sig.down)
+  
+  downTotal <- length(unique(downMics$microbe))
+  
+  downMics <- downMics %>%
+    dplyr::group_by(sample) %>%
+    dplyr::summarize(tempDown = sum(exo.ra))
+  
+  if(upTotal == 0 && downTotal == 0){
+    df <- data.frame(matrix(ncol = 0, nrow = 0))
+  }else if(upTotal == 0){
+    df <- downMics %>%
+      dplyr::mutate(score = tempDown*(1/downTotal)) %>%
+      dplyr::select(sample,score)
+  }else if(downTotal == 0){
+    df <- upMics %>%
+      dplyr::mutate(score = tempUp*(1/upTotal)) %>%
+      dplyr::select(sample, score)
+  }else{
+    df <- merge(upMics, downMics, by = "sample") %>%
+    dplyr::mutate(score = (tempUp - tempDown)*(1/(upTotal + downTotal))) %>%
+    dplyr::select(sample, score)
+  }
+  
+  return(df)
+    
+}
+```
+
+Test 
+```{r}
+paa <- calculateMicroSigScore(paa_up, paa_down, taxa)
+```
+
+
+
