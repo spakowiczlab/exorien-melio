@@ -1,4 +1,4 @@
-# exorien-melio
+# exorien-melio [![DOI](https://zenodo.org/badge/540431123.svg)](https://zenodo.org/badge/latestdoi/540431123)
 
 Analyses and figures for the manuscript: 
 
