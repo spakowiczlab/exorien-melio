@@ -7,10 +7,11 @@ Analyses and figures for the manuscript:
 > _bioRxiv 2023.05.24.542123; doi: https://doi.org/10.1101/2023.05.24.542123_ 
 
 & These authors contributed equally
+
 ^ Co-corresponding authors
 * Aik Choon Tan aikchoon.tan@hci.utah.edu
 * Ahmad Tarhini ahmad.tarhini@moffitt.org
 * Daniel Spakowicz daniel.spakowicz@osumc.edu
 
-This is part of the exORIEN Consortium series of manuscripts. 
+This is part of the exORIEN Consortium series of manuscripts, a collaboration of the [Oncology Research Information Exchange Network](https://www.oriencancer.org/)
 ![exORIEN Consortium log](https://github.com/spakowiczlab/exorien-melio/blob/main/doc/The-exORIEN-Consortium_logo.png)
