@@ -10,7 +10,21 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library(tidyverse)
 library(tableone)
+library(ggplot2)
+library(ggalt)
 ```
+
+read in data
+```{r}
+response <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE)
+io <- read.csv("/fs/ess/PAS1695/projects/exorien/data/pfs_IO.csv")
+clin <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_ClinicalMolLinkage_V4.csv")
+extra_clin <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_PatientMaster_V4.csv")
+hist <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_PatientHistory_V4.csv")
+diagnosis <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_Diagnosis_V4.csv")
+time <- readxl::read_xlsx("/fs/ess/PAS1695/projects/exorien/data/MEL_ICB_PFS.xlsx")
+```
+
 
 Add histology, stage, treatment type, median PFS
 		Strat by response and p-value (tableone)...fischers exact?
@@ -18,31 +32,32 @@ Add histology, stage, treatment type, median PFS
 Need to resolve additional variables
 		
 ```{r}
-response <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE) %>%
+response <- response %>%
   rename("RNASeq" = Sample_ID) %>%
   filter(Cancer_Type == "Melanoma")
 
-io <- read.csv("../data/pfs_IO.csv") %>%
+io <- io %>%
   rename("AvatarKey" = id) %>%
   select(AvatarKey, medication, OS_IO_M) %>%
   rename("IO" = medication,
          "PFS" = OS_IO_M)
 
+time <- time %>%
+  select(id, start) %>%
+  rename("AvatarKey" = id)
+
 # Is OS the same as PFS? in this data? average this? 
 
-clin <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_ClinicalMolLinkage_V4.csv") %>%
+clin <- clin %>%
   rename("AvatarKey" = ORIENAvatarKey)
-
-extra_clin <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_PatientMaster_V4.csv")
-
-hist <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_PatientHistory_V4.csv")
 
 clin <- merge(response, clin)
 clin <- merge(clin, extra_clin)
 clin <- merge(clin, hist)
 clin <- merge(clin, io)
+clin <- merge(clin, time)
 
-diagnosis <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_Diagnosis_V4.csv") %>%
+diagnosis <- diagnosis %>%
   select(AvatarKey, ClinGroupStage, CurrentlySeenForPrimaryOrRecurr) %>%
   rename("Stage" = ClinGroupStage) %>%
   filter(AvatarKey %in% clin$AvatarKey)
@@ -63,7 +78,7 @@ diagnosis <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OS
 # table(clin$Response)
 # table(clin$Sex)
 # table(clin$Age.At.Specimen.Collection)
-table(clin$Stage)
+# table(clin$Stage)
 # table(clin$Histology)
 # table(clin$ClinGroupStage)
 ```
@@ -71,7 +86,9 @@ table(clin$Stage)
 ```{r}
 clin <- clin %>%
   mutate(Response = ifelse(Response == 0, "Non-Responder", "Responder"),
-                           Age = as.double(Age.At.Specimen.Collection))
+         Age = as.double(Age.At.Specimen.Collection),
+         dif = start - as.double(Age.At.Specimen.Collection),
+          `Sample within 1 year of IO start` = ifelse(dif > 1, "No", "Yes"))
 ```
 
 <!-- Make age a categorial variable  -->
@@ -102,9 +119,9 @@ clin <- clin %>%
 <!-- ``` -->
 
 ```{r}
-variables_listed <- c("Age", "Sex", "Race", "IO", "PFS")
+variables_listed <- c("Age", "Sex", "Race", "IO", "PFS", "Sample within 1 year of IO start")
 
-cat_vars <- c("Sex", "Race", "IO")
+cat_vars <- c("Sex", "Race", "IO", "Sample within 1 year of IO start")
 
 rcc <- CreateTableOne(vars = variables_listed, strata = "Response", data = clin, factorVars = cat_vars)
 tab <- print(rcc, noSpaces = TRUE, quote = FALSE, formatOptions = list(big.mark = ","))
@@ -115,4 +132,38 @@ tab <- print(rcc, noSpaces = TRUE, quote = FALSE, formatOptions = list(big.mark 
 ```{r}
 write.csv(tab, file = "../figures/table1.csv")
 ```
+
+
+#  check out IO start and sample timeline
+```{r}
+io_start <- time %>%
+  select(id, start) %>%
+  rename("AvatarKey" = id)
+
+samp_time <- clin %>%
+  select(AvatarKey, RNASeq, Age.At.Specimen.Collection) %>%
+  mutate(samp.age = as.double(Age.At.Specimen.Collection)) 
+
+io_start <- left_join(samp_time, io_start) %>%
+  mutate(IO.start = start - samp.age) %>%
+  mutate(biopsy = 0)
+```
+
+plot
+```{r}
+io_start <- io_start %>%
+  arrange(IO.start) 
+
+g <- ggplot() +
+  geom_segment(data=io_start, aes(y=RNASeq, yend=RNASeq, x=-3, xend=5), size=0.15) +
+  geom_dumbbell(data=io_start, aes(y=RNASeq, x=biopsy, xend=IO.start),
+linewidth =1.5, color="black", size_x=3, size_xend = 3, colour_x = "red3", colour_xend = "cornflowerblue") +
+  theme(panel.grid.major.x=element_line(size=0.05)) + labs(x = "Years", y = "Patients")
+
+g
+```
+```{r}
+ggsave(plot = g, "../figures/io_start_timeline.png", width = 3, height = 8, dev = "png", dpi = 600)
+```
+
 
