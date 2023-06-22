@@ -18,7 +18,21 @@ prev <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/
 meta <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_TCGA_meta.csv")
 ```
 
-top 15 microbes in exorien-melio
+clean up tcga data 
+```{r}
+meta <- meta %>%
+  select(sample, TCGA.code) %>%
+  mutate(tcga.total = nrow(meta)) %>%
+  group_by(TCGA.code) %>%
+  mutate(cancer.total = n()) %>%
+  ungroup()
+
+tcga <- prev %>%
+  filter(sample %in% meta$sample) %>%
+  left_join(meta)
+```
+
+## TOP 15 SPECIES LEVEL microbes in exorien-melio
 ```{r}
 top.mel <- resPlot %>%
   filter(level == "species" & !is.na(delabel)) %>%
@@ -27,22 +41,77 @@ top.mel <- resPlot %>%
 top.mel <- rownames(top.mel)
 ```
 
-clean up tcga data 
+# just in SKCM
 ```{r}
-meta <- meta %>%
-  select(sample, TCGA.code)
+tcga.cancer <- tcga %>%
+  filter(species %in% top.mel) %>%
+  group_by(TCGA.code, species, cancer.total) %>%
+  summarise(count = sum(prev)) %>%
+  filter(TCGA.code == "SKCM") %>%
+  mutate(percent = (count / cancer.total)*100)
+```
 
-tcga <- prev %>%
+# in all TCGA
+```{r}
+tcga.all <- tcga %>%
+  filter(species %in% top.mel) %>%
+  group_by(species) %>%
+  summarise(count = sum(prev)) %>%
+  mutate(percent = (count / 2720)*100)
+```
+
+
+## TOP 15 all levels (excluding unclassified)
+```{r}
+top.mel.all <- resPlot %>%
+  filter(!grepl("unclassified", rownames(resPlot))) %>%
+  slice_min(padj, n=15)
+  
+top.mel.all <- rownames(top.mel.all)
+```
+
+tcga spread out tax levels 
+```{r}
+tcga.long <- gather(prev, level, microbe.name, domain:species, factor_key=TRUE) %>%
+  select(sample, microbe.name, prev) %>%
+  group_by(sample, microbe.name) %>%
+  summarize(prev = sum(prev)) %>%
+  mutate(prev = ifelse(prev > 0, 1, 0))
+  # select(sample, microbe.name, prev, tcga.total, cancer.total) %>%
+  # group_by(sample, microbe.name) %>%
+  # summarize(prev = sum(prev)) %>%
+  # ungroup()
+
+tcga.long <- tcga.long %>%
   filter(sample %in% meta$sample) %>%
   left_join(meta)
 ```
 
+# just in SKCM
 ```{r}
-tcga <- tcga %>%
-  filter(species %in% top.mel) %>%
-  group_by(TCGA.code, species) %>%
-  summarise(count = sum(prev))
+tcga.cancer.all <- tcga.long %>%
+  filter(microbe.name %in% top.mel.all) %>%
+  group_by(TCGA.code, microbe.name, cancer.total) %>%
+  summarise(count = sum(prev)) %>%
+  filter(TCGA.code == "SKCM") %>%
+  mutate(percent = (count / cancer.total)*100)
 ```
 
+# in all TCGA
+```{r}
+tcga.all.all <- tcga.long %>%
+  filter(microbe.name %in% top.mel.all) %>%
+  group_by(microbe.name) %>%
+  summarise(count = sum(prev)) %>%
+  mutate(percent = (count / 2720)*100)
+```
+
+save tables
+```{r}
+write.csv(tcga.cancer, "../data/tcga_check_skcm_spec.csv")
+write.csv(tcga.all, "../data/tcga_check_all_spec.csv")
+write.csv(tcga.cancer.all, "../data/tcga_check_skcm.csv")
+write.csv(tcga.all.all, "../data/tcga_check_all.csv")
+```
 
 
