@@ -9,57 +9,66 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 
 library(tidyverse)
+library(readxl)
 ```
 
 load data
 ```{r}
 resPlot <- readRDS("../data/deseqResults.RDS")
 prev <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/combined_prevalence.csv")
-meta <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_TCGA_meta.csv")
+meta.tcga <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_TCGA_meta.csv")
+meta.orien <- readxl::read_excel("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210707_ClinicalMolLinkage_V4_as-in-drake.xlsx")
 ```
 
-clean up tcga data 
+clean up data 
 ```{r}
-meta <- meta %>%
+meta.tcga <- meta.tcga %>%
   select(sample, TCGA.code) %>%
-  mutate(tcga.total = nrow(meta)) %>%
+  mutate(total = nrow(meta.tcga)) %>%
   group_by(TCGA.code) %>%
   mutate(cancer.total = n()) %>%
-  ungroup()
+  ungroup() %>%
+  mutate(source = "TCGA")
 
-tcga <- prev %>%
-  filter(sample %in% meta$sample) %>%
-  left_join(meta)
-```
-
-## TOP 15 SPECIES LEVEL microbes in exorien-melio
-```{r}
-top.mel <- resPlot %>%
-  filter(level == "species" & !is.na(delabel)) %>%
-  slice_min(padj, n=15)
+meta.orien <- meta.orien %>%
+  mutate(sample = RNASeq) %>%
+  select(sample, TCGA.code) %>%
+  mutate(total = nrow(meta.orien)) %>%
+  group_by(TCGA.code) %>%
+  mutate(cancer.total = n()) %>%
+  ungroup() %>%
+  mutate(source = "ORIEN")
   
-top.mel <- rownames(top.mel)
+meta <- rbind(meta.orien, meta.tcga)
 ```
 
-# just in SKCM
-```{r}
-tcga.cancer <- tcga %>%
-  filter(species %in% top.mel) %>%
-  group_by(TCGA.code, species, cancer.total) %>%
-  summarise(count = sum(prev)) %>%
-  filter(TCGA.code == "SKCM") %>%
-  mutate(percent = (count / cancer.total)*100)
-```
+<!-- ## TOP 15 SPECIES LEVEL microbes in exorien-melio -->
+<!-- ```{r} -->
+<!-- top.mel <- resPlot %>% -->
+<!--   #filter(level == "species" & !is.na(delabel)) %>% -->
+<!--   slice_min(padj, n=15) -->
 
-# in all TCGA
-```{r}
-tcga.all <- tcga %>%
-  filter(species %in% top.mel) %>%
-  group_by(species) %>%
-  summarise(count = sum(prev)) %>%
-  mutate(percent = (count / 2720)*100)
-```
+<!-- top.mel <- rownames(top.mel) -->
+<!-- ``` -->
 
+<!-- # just in SKCM -->
+<!-- ```{r} -->
+<!-- tcga.cancer <- tcga %>% -->
+<!--   filter(species %in% top.mel) %>% -->
+<!--   group_by(TCGA.code, species, cancer.total) %>% -->
+<!--   summarise(count = sum(prev)) %>% -->
+<!--   filter(TCGA.code == "SKCM") %>% -->
+<!--   mutate(percent = (count / cancer.total)*100) -->
+<!-- ``` -->
+
+<!-- # in all TCGA -->
+<!-- ```{r} -->
+<!-- tcga.all <- tcga %>% -->
+<!--   filter(species %in% top.mel) %>% -->
+<!--   group_by(species) %>% -->
+<!--   summarise(count = sum(prev)) %>% -->
+<!--   mutate(percent = (count / 2720)*100) -->
+<!-- ``` -->
 
 ## TOP 15 all levels (excluding unclassified)
 ```{r}
@@ -72,46 +81,74 @@ top.mel.all <- rownames(top.mel.all)
 
 tcga spread out tax levels 
 ```{r}
-tcga.long <- gather(prev, level, microbe.name, domain:species, factor_key=TRUE) %>%
+prev.long <- gather(prev, level, microbe.name, domain:species, factor_key=TRUE) %>%
   select(sample, microbe.name, prev) %>%
   group_by(sample, microbe.name) %>%
   summarize(prev = sum(prev)) %>%
   mutate(prev = ifelse(prev > 0, 1, 0))
-  # select(sample, microbe.name, prev, tcga.total, cancer.total) %>%
-  # group_by(sample, microbe.name) %>%
-  # summarize(prev = sum(prev)) %>%
-  # ungroup()
 
-tcga.long <- tcga.long %>%
+prev.long <- prev.long %>%
   filter(sample %in% meta$sample) %>%
   left_join(meta)
 ```
 
-# just in SKCM
 ```{r}
-tcga.cancer.all <- tcga.long %>%
+# just in SKCM
+mel <- prev.long %>%
   filter(microbe.name %in% top.mel.all) %>%
-  group_by(TCGA.code, microbe.name, cancer.total) %>%
+  group_by(TCGA.code, microbe.name, cancer.total, source) %>%
   summarise(count = sum(prev)) %>%
   filter(TCGA.code == "SKCM") %>%
   mutate(percent = (count / cancer.total)*100)
-```
 
 # in all TCGA
-```{r}
-tcga.all.all <- tcga.long %>%
+all <- prev.long %>%
   filter(microbe.name %in% top.mel.all) %>%
-  group_by(microbe.name) %>%
+  group_by(microbe.name, source, total) %>%
   summarise(count = sum(prev)) %>%
-  mutate(percent = (count / 2720)*100)
+  mutate(percent = (count / total)*100,
+         TCGA.code = "All") 
+
+# combine for plotting
+check <- rbind(mel, all) %>%
+  mutate(Source = paste0(TCGA.code, " - ", source),
+         microbe.name = substr(microbe.name, 4, nchar(microbe.name)))
 ```
 
-save tables
+plot
 ```{r}
-write.csv(tcga.cancer, "../data/tcga_check_skcm_spec.csv")
-write.csv(tcga.all, "../data/tcga_check_all_spec.csv")
-write.csv(tcga.cancer.all, "../data/tcga_check_skcm.csv")
-write.csv(tcga.all.all, "../data/tcga_check_all.csv")
+p <- check %>%
+  ggplot(aes(x = Source , y = percent, fill=microbe.name)) +
+  geom_col(alpha = 0.8, width = 0.85) +
+  scale_y_continuous(expand = c(0, 0.1)) +
+  facet_grid(rows = vars(microbe.name), switch = "y", space = "free_y")  +
+  theme_minimal() +
+  theme(
+    plot.margin = margin(0.5, 0.5, 0.5, 0.5, unit = "cm"),
+    plot.title = element_text(size = 15, face = "bold"),
+    strip.placement = "outside",
+    strip.text.y = element_text(angle = 180, face = "bold"),
+    axis.title.x = element_text(margin = margin(t = 0.5, b = 0.5, unit = "cm")),
+    axis.title.y = element_blank(),
+    axis.text = element_text(size = 10),
+    legend.position = "right",
+    legend.key.size = unit(1.5, "cm"),
+    panel.grid.major.y = element_blank(),
+    ) 
+  
+
+p 
+ggsave(plot = p, "../figures/TCGAcheck.png", height =10, width = 8, device = "png")
 ```
+
+
+
+<!-- save tables -->
+<!-- ```{r} -->
+<!-- write.csv(tcga.cancer, "../data/tcga_check_skcm_spec.csv") -->
+<!-- write.csv(tcga.all, "../data/tcga_check_all_spec.csv") -->
+<!-- write.csv(tcga.cancer.all, "../data/tcga_check_skcm.csv") -->
+<!-- write.csv(tcga.all.all, "../data/tcga_check_all.csv") -->
+<!-- ``` -->
 
 
