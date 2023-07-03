@@ -118,10 +118,19 @@ clin <- clin %>%
 
 <!-- ``` -->
 
+simplify treatment groups
 ```{r}
-variables_listed <- c("Age", "Sex", "Race", "IO", "PFS", "Sample within 1 year of IO start")
+clin <- clin %>%
+  mutate(IO = ifelse(IO == "Atezolizumab" | IO == "Pembrolizumab" | IO == "Nivolumab", "Anti-PD1/PDL1",
+                     ifelse(IO == "Ipilimumab", "Anti-CTLA4", 
+                            ifelse(IO == "Ipilimumab+Nivolumab", "Anti-CTLA4 + anti-PD1/PDL1", NA))))
+```
 
-cat_vars <- c("Sex", "Race", "IO", "Sample within 1 year of IO start")
+
+```{r}
+variables_listed <- c("Age", "Sex", "IO", "PFS", "Sample within 1 year of IO start")
+
+cat_vars <- c("Sex", "IO", "Sample within 1 year of IO start")
 
 rcc <- CreateTableOne(vars = variables_listed, strata = "Response", data = clin, factorVars = cat_vars)
 tab <- print(rcc, noSpaces = TRUE, quote = FALSE, formatOptions = list(big.mark = ","))
