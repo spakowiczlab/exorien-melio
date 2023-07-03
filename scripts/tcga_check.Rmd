@@ -10,6 +10,10 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library(tidyverse)
 library(readxl)
+
+install.packages("remotes")
+remotes::install_github("coolbutuseless/ggpattern")
+library(ggpattern)
 ```
 
 load data
@@ -110,37 +114,74 @@ all <- prev.long %>%
          TCGA.code = "All") 
 
 # combine for plotting
-check <- rbind(mel, all) %>%
+check <- rbind(mel, all)
+# %>%
+#   mutate(Source = paste0(TCGA.code, " - ", source),
+#          microbe.name = substr(microbe.name, 4, nchar(microbe.name)))
+```
+color grouping
+```{r}
+check <- check %>%
+  mutate(label = case_when(
+    microbe.name == "k__Fungi" ~ "Fungi",
+    microbe.name == "p__Ascomycota" ~ "Fungi",
+    microbe.name == "s__Candida orthopsilosis" ~ "Fungi",
+    microbe.name == "s__Delftia lacustris" ~ "Proteobacteria",
+    microbe.name == "s__Enterobacter hormaechei" ~ "Proteobacteria",
+    microbe.name == "s__Fusobacterium gonidiaformans" ~ "Fusobacteria",
+    microbe.name == "s__Fusobacterium nucleatum" ~ "Fusobacteria",
+    microbe.name == "s__Mannheimia sp. USDA-ARS-USMARC-1261" ~ "Proteobacteria",
+    microbe.name == "s__Mollivirus sibericum" ~ "Viruses",
+    microbe.name == "s__Moraxella osloensis" ~ "Proteobacteria",
+    microbe.name == "s__Nocardia mangyaensis" ~ "Actinobacteria", 
+    microbe.name == "s__Porphyromonas asaccharolytica" ~ "Bacteroidetes",
+    microbe.name == "s__Pseudomonas fluorescens" ~ "Proteobacteria",
+    microbe.name == "s__Snyder-Theilen feline sarcoma virus" ~ "Viruses",
+    microbe.name == "s__Theileria annulata" ~ "Apicomplexa"
+  )) %>%
   mutate(Source = paste0(TCGA.code, " - ", source),
          microbe.name = substr(microbe.name, 4, nchar(microbe.name)))
+  
 ```
 
 plot
 ```{r}
 p <- check %>%
-  ggplot(aes(x = Source , y = percent, fill=microbe.name)) +
+  ggplot(aes(x = Source , y = percent, fill=label)) +
   geom_col(alpha = 0.8, width = 0.85) +
+  #geom_col_pattern(aes(fill=microbe.name, pattern=source, pattern_type=source),colour='black') +
   scale_y_continuous(expand = c(0, 0.1)) +
+  #scale_pattern_continuous(choices = c("stripe", "crosshatch", "circle")) +
+  scale_fill_manual(values=c("red3", "cyan4", "darkgreen", "darkgoldenrod2", "salmon2", "cornflowerblue", "deeppink4")) +
   facet_grid(rows = vars(microbe.name), switch = "y", space = "free_y")  +
   theme_minimal() +
   theme(
     plot.margin = margin(0.5, 0.5, 0.5, 0.5, unit = "cm"),
     plot.title = element_text(size = 15, face = "bold"),
     strip.placement = "outside",
-    strip.text.y = element_text(angle = 180, face = "bold"),
+    #strip.text.y = element_text(angle = 0, face = "bold"),
+    strip.text.y.left = element_text(angle = 0, face = "bold"),
     axis.title.x = element_text(margin = margin(t = 0.5, b = 0.5, unit = "cm")),
     axis.title.y = element_blank(),
     axis.text = element_text(size = 10),
     legend.position = "right",
-    legend.key.size = unit(1.5, "cm"),
     panel.grid.major.y = element_blank(),
-    ) 
+    ) +
+  coord_flip() 
   
 
 p 
-ggsave(plot = p, "../figures/TCGAcheck.png", height =10, width = 8, device = "png")
+ggsave(plot = p, "../figures/TCGAcheck.png", height =10, width = 9, device = "png")
 ```
 
+test column pattern - not working
+```{r}
+check %>%
+  ggplot(aes(x = Source , y = percent, fill=label)) +
+  #geom_col(alpha = 0.8, width = 0.85) +
+  ggpattern::geom_col_pattern(stat = "identity")
+  #ggpattern::geom_bar_pattern(stat = "identity")
+```
 
 
 <!-- save tables -->
