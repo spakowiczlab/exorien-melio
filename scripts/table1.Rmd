@@ -88,7 +88,7 @@ clin <- clin %>%
   mutate(Response = ifelse(Response == 0, "Non-Responder", "Responder"),
          Age = as.double(Age.At.Specimen.Collection),
          dif = start - as.double(Age.At.Specimen.Collection),
-          `Sample within 1 year of IO start` = ifelse(dif > 1, "No", "Yes"))
+          `Sample within 1 year of IO start` = ifelse(abs(dif) > 1, "No", "Yes"))
 ```
 
 <!-- Make age a categorial variable  -->
