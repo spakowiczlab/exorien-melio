@@ -1,0 +1,53 @@
+---
+title: "check mics CHM1 filter"
+author: "Caroline Wheeler"
+date: "8/25/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+```
+
+read in data
+```{r}
+deseqResults <- readRDS("~/Github/exorien-melio/data/deseqResults.RDS")
+flag <- read.csv("/fs/ess/PAS1695/projects/T2T-CHM13v2.0/bracken-out/humanSplit_taxaAssigned.csv")
+```
+
+```{r}
+melio.flag <- deseqResults %>%
+  rownames_to_column(var = "microbe") %>%
+  filter(microbe %in% flag$species) 
+```
+
+24 species flagged as suspicious in the melio dataset 
+NONE that were identified as signiifcantly associated with R/NR
+
+check all levels? 
+```{r}
+flag.all <- flag %>%
+  select(domain, kingdom, phylum, class, order, family, genus, species, new_est_reads) %>%
+  gather(key = "level", value = "microbe") %>%
+  distinct()
+```
+
+```{r}
+melio.flag.all <- deseqResults %>%
+  rownames_to_column(var = "microbe") %>%
+  filter(microbe %in% flag.all$microbe) 
+```
+
+152 mics from ALL LEVELS
+FUNGI and ASYMPCOTA are flagged and signifcant 
+
+```{r}
+flag.fungi <- flag %>%
+  filter(phylum == "p__Ascomycota") %>%
+  summarize(reads = sum(new_est_reads))
+```
+416 total reads found in CHM1 that were Fungi or Asympcota 
+
+
