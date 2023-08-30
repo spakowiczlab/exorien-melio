@@ -220,6 +220,13 @@ resPlot <- resPlot %>%
 ```{r}
 #saveRDS(resPlot, file ="../data/deseqResults.RDS")
 resPlot <- readRDS("../data/deseqResults.RDS")
+
+# save for supp
+# resPlot <- resPlot %>%
+#   rownames_to_column() %>%
+#   select(-delabel, -`Taxonomic Grouping`)
+# 
+# write.csv(resPlot, "../data/deseqResults.csv")
 ```
 
 ```{r}
