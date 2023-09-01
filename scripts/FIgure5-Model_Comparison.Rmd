@@ -1,0 +1,538 @@
+---
+title: "Figure 5 - Model Comparison"
+output: html_document
+date: "2023-06-12"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Support Vector Machine Analysis
+
+```{r Necessary Packages}
+library(tidyverse)
+library(ggplot2)
+library(e1071)
+library(gridExtra)
+library(randomForest)
+library(ROCR)
+library(gdata)
+library(ggpubr)
+```
+
+```{r Load necessary data for RF Model}
+load("Data/Scored_IO_NOVA.rda")
+load("Data/IOSig_Signatures.rda")
+microbe_data <- readr::read_csv("Data/Microbes.csv")
+clin_data <- readr::read_tsv("Data/IO_NOVA_mel_clin.txt")
+
+seed_list <- c(12345, 12346, 12347, 12348, 12349)
+```
+
+```{r Random Forest Functions}
+
+# Main function call to generate RF models using 5 seeds #
+kTest <- function(clin, feature, seeds){
+  out <- list()
+  for(i in 1:length(seeds)){
+    out[[i]] <- k_validate(clin, feature, seed = seeds[i])
+  }
+  out <- grabVals(out)
+  out
+}
+
+# Grabbing AUROC values from input models #
+grabVals <- function(input){
+  out <- list()
+  for(i in 1:5){
+    for(j in 1:5){
+      out <- append(out, input[[i]][[j]][[1]])
+    }
+  }
+  out
+}
+
+# Function create and test RF model #
+getROC <- function(train, clin.train, test, clin.test){
+  model.training <- randomForest(x = train[,-1, drop=FALSE], y = as.factor(clin.train$response))
+  test.preds <- predict(model.training, test[,-1, drop=FALSE])
+  
+  print(model.training)
+  # Check variable importance
+  varImpPlot(model.training)
+  # Prediction confusion matrix
+  table(observed = clin.test$response, predicted = test.preds)
+  
+  prediction_for_roc_curve <- predict(model.training,test[,-1, drop=FALSE],type="prob")
+  pred <- prediction(prediction_for_roc_curve[,2], clin.test$response, label.ordering = c("non-responder", "responder"))
+  perf <- performance(pred, "tpr", "fpr")
+  
+  auc_ROCR <- performance(pred, measure = "auc")
+  print(auc_ROCR)
+  auc <- auc_ROCR@y.values[[1]]
+  print(auc)
+  
+  df <- data.frame(FalsePositive=c(perf@x.values[[1]]),
+                   TruePositive=c(perf@y.values[[1]]))
+  out <- list(auc, df)
+  
+  return(out)
+}
+
+# Shuffling and creating training / testing groups for getROC #
+k_validate <- function(clin_data, feature_data, seed){
+  set.seed(seed)
+  
+  # Grab responder samples #
+  responder_clin <- clin_data %>%
+    dplyr::filter(response == "responder")
+  # Shuffle responder samples via seed #
+  responder_clin <- responder_clin[sample(nrow(responder_clin)), ]
+  
+  # Grab non-responder samples #
+  non_responder_clin <- clin_data %>%
+    dplyr::filter(response == 'non-responder')
+  # Shuffle non-responder samples via seed #
+  non_responder_clin <- non_responder_clin[sample(nrow(non_responder_clin)), ]
+
+    # Creating index data frame for the R/NRs to ensure coverage for each group #
+    responder_indexes <- c(rep(1, 8), rep(2, 8), rep(3, 8), rep(4, 8), rep(5, 7))
+    non_responder_indexes <- c(rep(1, 6), rep(2, 7), rep(3, 6), rep(4, 7), rep(5, 6))
+    out <- list()
+    
+    # Creating testing and training groups #
+    for(i in 1:5){
+      rIndexes <- which(responder_indexes == i, arr.ind = TRUE)
+      nrIndexes <- which(non_responder_indexes == i, arr.ind = TRUE)
+      
+      test.clin <- rbind(responder_clin[rIndexes, ], non_responder_clin[nrIndexes, ])
+      train.clin <- rbind(responder_clin[-rIndexes, ], non_responder_clin[-nrIndexes, ])
+      
+      test.seq <- feature_data[which(feature_data$Sample_ID %in% test.clin$Sample_ID), ]
+      test.seq <- test.seq[match(test.clin$Sample_ID, test.seq$Sample_ID), ]
+      
+      train.seq <- feature_data[which(feature_data$Sample_ID %in% train.clin$Sample_ID), ]
+      train.seq <- train.seq[match(train.clin$Sample_ID, train.seq$Sample_ID), ]
+      
+      if(all(train.seq$Sample_ID == train.clin$Sample_ID) == FALSE){
+        stop("Training Sample_IDs do not match")
+      }
+      if(all(test.seq$Sample_ID == test.clin$Sample_ID) == FALSE){
+        stop("Testing Sample_IDs do not match")
+      }
+      
+      # Creating the RF model #
+      out[[i]] <- getROC(train.seq, train.clin, test.seq, test.clin)
+    }
+  
+  
+  avg_auc <- lapply(out, function(x){ x[[1]]})
+  message("\nAccuracy average: ", (rowMeans(as.data.frame(avg_auc))))
+  return(out)
+}
+```
+
+```{r Generate RF Models}
+seed_list <- c(12345, 12346, 12347, 12348, 12349)
+
+# Signatures selected due to Mann Whitney Adj.P < 0.05 #
+filtered_sigs <- c("Effector_T", "INFg_Effector", "IFNG6", "Immune_Cytolytic",
+                   "TIP_Hot", "Immune_Infiltration", "IFNG18", "Chemokines",
+                   "TCR_Signaling", "Ipi_Neoadjuvant", "Roh_Immune_Score", "Neoadjuvant_Response",
+                   "MHC_II", "mMDSC", "Ock_Immune_Score", "IMPRES")
+
+# Matching expression data sample IDs with the clinical data Sample IDs #
+Scored_IO_NOVA <- Scored_IO_NOVA[match(clin_data$Sample_ID, Scored_IO_NOVA$Sample_ID), ]
+microbe_data <- microbe_data[match(clin_data$Sample_ID, microbe_data$Sample_ID), ]
+Filtered_IO_NOVA <- Scored_IO_NOVA[, which(colnames(Scored_IO_NOVA) %in% c("Sample_ID", filtered_sigs))]
+AllZ_Microbe <- merge(Scored_IO_NOVA, microbe_data)
+FiltZ_Microbe <- merge(Filtered_IO_NOVA, microbe_data)
+
+clin_data$response <- ifelse(clin_data$response == 1, "responder", "non-responder")
+
+IO_NOVA_results <- kTest(clin_data, Scored_IO_NOVA, seed_list)
+Microbe_results <- kTest(clin_data, microbe_data, seed_list)
+Filtered_NOVA_results <- kTest(clin_data, Filtered_IO_NOVA, seed_list)
+AllZ_Microbe_results <- kTest(clin_data, AllZ_Microbe, seed_list)
+FiltZ_Microbe_results <- kTest(clin_data, FiltZ_Microbe, seed_list)
+```
+
+```{r Shape RF Model Results}
+Results_RF <- data.frame(
+  unlist(IO_NOVA_results),
+  unlist(Microbe_results),
+  unlist(Filtered_NOVA_results),
+  unlist(AllZ_Microbe_results),
+  unlist(FiltZ_Microbe_results)
+)
+colnames(Results_RF) <- c("GeneSig_Z_Score", 
+                       "Microbe", 
+                       "Imm_Act_Z_Score", 
+                       "GeneSig_Z_Microbe", 
+                       "Imm_Act_Z_Microbe")
+
+Results_RF <- tidyr::pivot_longer(Results_RF, cols = dplyr::everything(), names_to = "Model", values_to = "AUROC")
+Means_RF <- Results_RF %>%
+  dplyr::group_by(Model) %>%
+  dplyr::mutate(Model_Mean = mean(AUROC)) %>%
+  dplyr::select(Model, Model_Mean) %>%
+  dplyr::distinct() %>%
+  dplyr::arrange(desc(Model_Mean))
+Means_RF$Model <- factor(Means_RF$Model, levels = unique(Means_RF$Model))
+mean_order_RF <- rev(levels(Means_RF$Model))
+```
+
+```{r Plot RF Model Performance}
+Model_Comparison_Plot_RF <- ggplot(Results_RF, aes(x = forcats::fct_relevel(Model, mean_order_RF), y = AUROC, color = Model)) +
+  geom_boxplot(outlier.colour = NA, fatten = NULL) + 
+  geom_jitter() +
+  labs(y = "AUROC", x = "Model", title = "Random Forest AUROC Model Comparison") +
+  theme(axis.title = element_text(face = 'bold', size = '16'),
+        axis.text.x = element_text(size = 10, face = 'bold'),
+        plot.title = element_text(face = 'bold', hjust = 0.5, size = 14),
+        axis.title.y = element_text(hjust = 0.45),
+        legend.position = "bottom",
+        axis.line = element_line(color = 'black', linewidth = 0.5),
+        panel.background = element_rect(fill = 'white')) +
+  scale_y_continuous(limits= c(0, 1.35), breaks=seq(0,1, 0.1)) +  # 1.35
+  annotate(geom = "text", x = 3, y = 0.25, label = "Mean AUROC", color = 'black', size = 5) +
+  annotate(geom="text", x=1, y=0.05, label=round(Means_RF[5,2], 3),
+            color="black", size=4) +
+  annotate(geom="text", x=2, y=0.05, label=round(Means_RF[4,2], 3),
+            color="black", size=4) +
+  annotate(geom="text", x=3, y=0.05, label=round(Means_RF[3,2], 3),
+            color="black", size=4) +
+  annotate(geom="text", x=4, y=0.05, label=round(Means_RF[2,2], 3),
+            color="black", size=4) +
+  annotate(geom="text", x=5, y=0.05, label=round(Means_RF[1,2], 3),
+            color="black", size=4)
+
+significant_comparisons_RF <- list(
+  c("Microbe", "Imm_Act_Z_Score"),
+  c("Microbe", "GeneSig_Z_Microbe"),
+  c("Microbe", "Imm_Act_Z_Microbe"),
+  c("GeneSig_Z_Score", "Imm_Act_Z_Microbe")
+)
+
+Model_Comparison_Plot_RF <- Model_Comparison_Plot_RF +
+     ggpubr::stat_compare_means(comparisons = significant_comparisons_RF, 
+                                label = 'p.signif', 
+                                label.y = seq(0.95, by = 0.1, length.out = 4)) + 
+  stat_summary(geom = "errorbar", fun.min = mean, fun = mean, fun.max = mean, width = .75)
+
+
+Model_Comparison_Plot_RF
+
+```
+
+```{r Load necessary data for SVM}
+load("Data/Scored_IO_NOVA.rda")
+load("Data/IOSig_Signatures.rda")
+microbe_data <- readr::read_csv("Data/Microbes.csv")
+clin_data <- readr::read_tsv("Data/IO_NOVA_mel_clin.txt")
+
+seed_list <- c(12345, 12346, 12347, 12348, 12349)
+```
+
+```{r Prep Input Data for SVM}
+# Combine the microbe and IOSig Data #
+CombinedData <- dplyr::inner_join(Scored_IO_NOVA, microbe_data, by = "Sample_ID")
+# Ensure the sample order matches #
+if(all(CombinedData$Sample_ID == clin_data$Sample_ID)){
+  CombinedData$response <- clin_data$response
+  CombinedData$response <- ifelse(CombinedData$response == 1, "R", "NR")
+  CombinedData$response <- as.factor(CombinedData$response)
+}
+
+# Generate Feature Groups of interest #
+  # All Signatures
+  # All Microbes
+  # Filtered Signatures
+  # All Combined
+  # Filtered Combined
+filt_sigs <- c("Effector_T", "INFg_Effector", "IFNG6", "Immune_Cytolytic",
+                   "TIP_Hot", "Immune_Infiltration", "IFNG18", "Chemokines",
+                   "TCR_Signaling", "Ipi_Neoadjuvant", "Roh_Immune_Score", "Neoadjuvant_Response",
+                   "MHC_II", "mMDSC", "Ock_Immune_Score", "IMPRES")
+
+All_Features <- CombinedData
+All_Microbes <- CombinedData[,
+                             which(colnames(CombinedData) %in% c(colnames(microbe_data), "response"))]
+IO_Signatures <- CombinedData[,
+                              which(colnames(CombinedData) %in% c("Sample_ID", "response", names(IOSig_Signatures)))]
+Filtered_Signature <- CombinedData[,
+                                   which(colnames(CombinedData) %in% c("Sample_ID", "response", filt_sigs))]
+Filtered_Combined <- CombinedData[,
+                                  which(colnames(CombinedData) %in% c(colnames(Filtered_Signature), colnames(All_Microbes)))]
+
+```
+
+```{r Generate SVM Sample Groups}
+# Shuffle samples in same manner as RF Model
+genSampleGroups <- function(data, seed){
+    set.seed(seed)
+  
+  # Grab responder samples #
+  responder_clin <- data %>%
+    dplyr::filter(response == "R")
+  # Shuffle responder samples via seed #
+  responder_clin <- responder_clin[sample(nrow(responder_clin)), ]
+  
+  # Grab non-responder samples #
+  non_responder_clin <- data %>%
+    dplyr::filter(response == 'NR')
+  # Shuffle non-responder samples via seed #
+  non_responder_clin <- non_responder_clin[sample(nrow(non_responder_clin)), ]
+
+    # Creating index data frame for the R/NRs to ensure coverage for each group #
+    responder_indexes <- c(rep(1, 8), rep(2, 8), rep(3, 8), rep(4, 8), rep(5, 7))
+    non_responder_indexes <- c(rep(1, 6), rep(2, 7), rep(3, 6), rep(4, 7), rep(5, 6))
+    
+    out <- list()
+    
+    for(i in 1:5){
+      rIndexes <- which(responder_indexes == i, arr.ind = TRUE)
+      nrIndexes <- which(non_responder_indexes == i, arr.ind = TRUE)
+      
+      test_samples <- rbind(responder_clin[rIndexes, ],
+                            non_responder_clin[nrIndexes, ])
+      test_samples <- test_samples |> 
+        dplyr::pull(Sample_ID)
+      out[[i]] <- test_samples
+    }
+    return(out)
+}
+
+Sample_Groups <- lapply(seed_list, genSampleGroups, data = CombinedData)
+```
+
+```{r SVM Prediction Functions}
+# Function to take 5 sample groups and generate a prediction
+genSVMPredictions <- function(sample_group, feature_data, kernel){
+  testing_group <- feature_data |>
+    dplyr::filter(Sample_ID %in% sample_group) |>
+    dplyr::select(-Sample_ID)
+  training_group <- feature_data |>
+    dplyr::filter(!(Sample_ID %in% sample_group)) |>
+    dplyr::select(-Sample_ID)
+  
+  params <- e1071::tune.svm(response ~., 
+                            data = training_group,
+                            gamma = 10^(-6:-2),
+                            cost = 10^(1:2))
+  # sigmoid, radial, linear, polynomial
+  
+  svm_model <- e1071::svm(response ~., data = training_group,
+                          kernel = kernel,
+                          #kernel = "sigmoid",
+                          cost = params$best.parameter[[2]],
+                          gamma = params$best.parameter[[1]])
+  
+  prediction <- predict(svm_model, testing_group[, -c(ncol(testing_group))])
+  CM <- caret::confusionMatrix(prediction, testing_group[, ncol(testing_group)])
+  CM[["overall"]][["Accuracy"]]
+}
+
+runSVM <- function(seed, sample_groups, feature_data, kernel){
+  set.seed(seed)
+  data <- purrr::map_depth(sample_groups, 
+                           2, genSVMPredictions, 
+                           feature_data = feature_data,
+                           kernel = kernel)
+  
+  data <- purrr::flatten(data)
+  data <- purrr::map_dfr(data, as.data.frame)
+  message(mean(data[, 1]))
+  return(data)
+}
+```
+
+```{r SVM Radial Kernel Models}
+# Radial Kernel
+Signature_SVM_radial <- runSVM(seed = 123457,
+                        sample_groups = Sample_Groups,
+                        feature_data = IO_Signatures,
+                        kernel = "radial")
+Microbe_SVM_radial <- runSVM(seed = 123457,
+                      sample_groups = Sample_Groups,
+                      feature_data = All_Microbes,
+                      kernel = "radial")
+FiltSig_SVM_radial <- runSVM(seed = 123457,
+                      sample_groups = Sample_Groups,
+                      feature_data = Filtered_Signature,
+                      kernel = "radial")
+All_SVM_radial <- runSVM(seed = 123457,
+                  sample_groups = Sample_Groups,
+                  feature_data = All_Features,
+                  kernel = "radial")
+FiltCombined_SVM_radial <- runSVM(seed = 123457,
+                           sample_groups = Sample_Groups,
+                           feature_data = Filtered_Combined,
+                           kernel = "radial")
+
+Combined_Values_radial <- cbind(Signature_SVM_radial,
+                         Microbe_SVM_radial,
+                         FiltSig_SVM_radial,
+                         All_SVM_radial,
+                         FiltCombined_SVM_radial)
+
+colnames(Combined_Values_radial) <- c("GeneSig_Z_Score",
+                               "Microbe",
+                               "Imm_Act_Z_Score",
+                               "GeneSig_Z_Microbe",
+                               "Imm_Act_Z_Microbe")
+Combined_Values_radial <- Combined_Values_radial |>
+  tidyr::pivot_longer(cols = dplyr::everything(),
+                      names_to = "Feature Set")
+
+Means_radial <- Combined_Values_radial %>%
+  dplyr::group_by(`Feature Set`) %>%
+  dplyr::mutate(Model_Mean = mean(value)) %>%
+  dplyr::select(`Feature Set`, Model_Mean) %>%
+  dplyr::distinct() %>%
+  dplyr::arrange(desc(Model_Mean))
+Means_radial$`Feature Set` <- factor(Means_radial$`Feature Set`, levels =unique(Means_radial$`Feature Set`))
+```
+
+```{r SVM Sigmoid Kernel Models}
+# Sigmoid Kernel
+Signature_SVM_sigmoid <- runSVM(seed = 123457,
+                        sample_groups = Sample_Groups,
+                        feature_data = IO_Signatures,
+                        kernel = "sigmoid")
+Microbe_SVM_sigmoid <- runSVM(seed = 123457,
+                      sample_groups = Sample_Groups,
+                      feature_data = All_Microbes,
+                      kernel = "sigmoid")
+FiltSig_SVM_sigmoid <- runSVM(seed = 123457,
+                      sample_groups = Sample_Groups,
+                      feature_data = Filtered_Signature,
+                      kernel = "sigmoid")
+All_SVM_sigmoid <- runSVM(seed = 123457,
+                  sample_groups = Sample_Groups,
+                  feature_data = All_Features,
+                  kernel = "sigmoid")
+FiltCombined_SVM_sigmoid <- runSVM(seed = 123457,
+                           sample_groups = Sample_Groups,
+                           feature_data = Filtered_Combined,
+                           kernel = "sigmoid")
+
+Combined_Values_sigmoid <- cbind(Signature_SVM_sigmoid,
+                         Microbe_SVM_sigmoid,
+                         FiltSig_SVM_sigmoid,
+                         All_SVM_sigmoid,
+                         FiltCombined_SVM_sigmoid)
+
+colnames(Combined_Values_sigmoid) <- c("GeneSig_Z_Score",
+                               "Microbe",
+                               "Imm_Act_Z_Score",
+                               "GeneSig_Z_Microbe",
+                               "Imm_Act_Z_Microbe")
+Combined_Values_sigmoid <- Combined_Values_sigmoid |>
+  tidyr::pivot_longer(cols = dplyr::everything(),
+                      names_to = "Feature Set")
+
+Means_sigmoid <- Combined_Values_sigmoid %>%
+  dplyr::group_by(`Feature Set`) %>%
+  dplyr::mutate(Model_Mean = mean(value)) %>%
+  dplyr::select(`Feature Set`, Model_Mean) %>%
+  dplyr::distinct() %>%
+  dplyr::arrange(desc(Model_Mean))
+Means_sigmoid$`Feature Set` <- factor(Means_sigmoid$`Feature Set`, levels =unique(Means_sigmoid$`Feature Set`))
+```
+
+```{r SVM Radial Plot Generation}
+svm_order <- c("Microbe", "GeneSig_Z_Score",
+               "Imm_Act_Z_Score", "GeneSig_Z_Microbe",
+               "Imm_Act_Z_Microbe")
+
+radial_plot <- ggplot(Combined_Values_radial, aes(x = forcats::fct_relevel(`Feature Set`, svm_order), 
+                            y = value, color = `Feature Set`)) +
+  geom_boxplot(fatten = NULL) +
+  geom_jitter() +
+  labs(x = "Model", y = "AUROC", title = "Support Vector Machine Model Comparison (Radial)") +
+  theme(axis.title = element_text(face = 'bold', size = '16'),
+        axis.text.x = element_text(size = 10, face = 'bold'),
+        plot.title = element_text(face = 'bold', hjust = 0.5, size = 14),
+        axis.title.y = element_text(hjust = 0.45),
+        legend.position = "bottom",
+        axis.line = element_line(color = 'black', linewidth = 0.5),
+        panel.background = element_rect(fill = 'white')) +
+  scale_y_continuous(limits= c(0, 1.3), breaks=seq(0,1, 0.1)) +
+  annotate(geom = "text", x = 3, y = 0.25, label = "Mean AUROC", color = 'black', size = 5) +
+  annotate(geom="text", x=1, y=0.05, label=round(Means_radial[4,2], 3),
+            color="black", size=4) +
+  annotate(geom="text", x=2, y=0.05, label=round(Means_radial[5,2], 3),
+            color="black", size=4) +
+  annotate(geom="text", x=3, y=0.05, label=round(Means_radial[2,2], 3),
+            color="black", size=4) +
+  annotate(geom="text", x=4, y=0.05, label=round(Means_radial[3,2], 3),
+            color="black", size=4) +
+  annotate(geom="text", x=5, y=0.05, label=round(Means_radial[1,2], 3),
+            color="black", size=4)
+
+significant_radial <- list(
+  c("Imm_Act_Z_Microbe", "Microbe"),
+  c("Imm_Act_Z_Microbe", "GeneSig_Z_Score"),
+  c("GeneSig_Z_Microbe", "Microbe"),
+  c("Imm_Act_Z_Score", "Microbe")
+)
+
+radial_plot <- radial_plot +
+     ggpubr::stat_compare_means(comparisons = significant_radial, 
+                                label = 'p.signif', 
+                                label.y = seq(0.95, by = 0.1, length.out = 10)) + 
+  stat_summary(geom = "errorbar", fun.min = mean, fun = mean, fun.max = mean, width = .75)
+
+```
+
+```{r SVM Sigmoid Plot Generation}
+svm_order <- c("Microbe", "GeneSig_Z_Score",
+               "Imm_Act_Z_Score", "GeneSig_Z_Microbe",
+               "Imm_Act_Z_Microbe")
+
+sigmoid_plot <- ggplot(Combined_Values_sigmoid, aes(x = forcats::fct_relevel(`Feature Set`, svm_order), 
+                            y = value, color = `Feature Set`)) +
+  geom_boxplot(fatten = NULL) +
+  geom_jitter() +
+  labs(x = "Model", y = "AUROC", title = "Support Vector Machine Model Comparison (Sigmoid)") +
+  theme(axis.title = element_text(face = 'bold', size = '16'),
+        axis.text.x = element_text(size = 10, face = 'bold'),
+        plot.title = element_text(face = 'bold', hjust = 0.5, size = 14),
+        axis.title.y = element_text(hjust = 0.45),
+        legend.position = "bottom",
+        axis.line = element_line(color = 'black', linewidth = 0.5),
+        panel.background = element_rect(fill = 'white')) +
+  scale_y_continuous(limits= c(0, 1.15), breaks=seq(0,1, 0.1)) +
+  annotate(geom = "text", x = 3, y = 0.25, label = "Mean AUROC", color = 'black', size = 5) +
+  annotate(geom="text", x=1, y=0.05, label=round(Means_sigmoid[4,2], 3),
+            color="black", size=4) +
+  annotate(geom="text", x=2, y=0.05, label=round(Means_sigmoid[5,2], 3),
+            color="black", size=4) +
+  annotate(geom="text", x=3, y=0.05, label=round(Means_sigmoid[2,2], 3),
+            color="black", size=4) +
+  annotate(geom="text", x=4, y=0.05, label=round(Means_sigmoid[3,2], 3),
+            color="black", size=4) +
+  annotate(geom="text", x=5, y=0.05, label=round(Means_sigmoid[1,2], 3),
+            color="black", size=4)
+
+significant_sigmoid <- list(
+  c("Imm_Act_Z_Microbe", "GeneSig_Z_Score"),
+  c("Imm_Act_Z_Microbe", "Microbe")
+)
+
+sigmoid_plot <- sigmoid_plot +
+     ggpubr::stat_compare_means(comparisons = significant_sigmoid, 
+                                label = 'p.signif', 
+                                label.y = seq(0.95, by = 0.1, length.out = 10)) + 
+  stat_summary(geom = "errorbar", fun.min = mean, fun = mean, fun.max = mean, width = .75)
+
+```
+
+```{r Generate Combined Model Plot}
+
+# Save as 10 x 15 portrait PDF #
+Combined_Model_Comparison <- grid.arrange(Model_Comparison_Plot_RF, radial_plot, sigmoid_plot)
+
+```
