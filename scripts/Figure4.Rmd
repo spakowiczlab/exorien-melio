@@ -17,7 +17,8 @@ size results as seen in figure 4.
 library(tidyverse)
 library(ComplexHeatmap)
 library(GSVA)
-#library(ggpubr)
+library(ggpubr)
+library(Hmisc)
 ```
 
 
@@ -27,7 +28,7 @@ library(GSVA)
 - Microbe Data
 
 ```{r Load and format required data}
-data <- readRDS("../data/deseqResults.RDS")
+data <- readRDS("Data/deseqResults.RDS")
 data <- data %>%
   filter(level == "species" & !is.na(delabel))
 
@@ -47,10 +48,9 @@ Microbe_Effect_Size <- data %>%
   ylab("Species") +
   xlab("Effect Size") +
   scale_fill_manual(values=c("red3", "cyan4", "darkgreen", "darkgoldenrod2", "salmon2", "cornflowerblue", "deeppink4")) +
-  theme_minimal()
+  theme(legend.key.size = unit(1, 'cm'), legend.title = element_text(size=10), legend.text = element_text(size=8), axis.text =element_text(size = 10), axis.title=element_text(size=10))
 
 Microbe_Effect_Size
-ggsave(file = "../figures/effectSize.png", dev = "png", width = 11, height = 8, dpi = 600)
 ```
 
 ### Single single Gene Set Enrichment Analysis ###
@@ -63,12 +63,12 @@ ggsave(file = "../figures/effectSize.png", dev = "png", width = 11, height = 8, 
 - TIMEx Cell Types  
 - IOSig Gene Set
 ```{r Load in required data, include=FALSE}
-seq_data <- readr::read_tsv("../data/IO_NOVA_mel_seq.txt")
-clin_data <- readr::read_tsv("../data/IO_NOVA_mel_clin.txt")
-microbe_data <- readr::read_csv("../data/Microbes.csv")
-load("../data/Hallmark.rda")
-load("../data/TIMEx.rda")
-load("../data/IOSig_geneset.rda")
+seq_data <- readr::read_tsv("Data/IO_NOVA_mel_seq.txt")
+clin_data <- readr::read_tsv("Data/IO_NOVA_mel_clin.txt")
+microbe_data <- readr::read_csv("Data/Microbes.csv")
+load("Data/Hallmark.rda")
+load("Data/TIMEx.rda")
+load("Data/IOSig_geneset.rda")
 seq_data <- seq_data[!duplicated(seq_data$Genes), ]
 ```
 
@@ -134,37 +134,42 @@ GeneSig_Micro <- combineDat(GeneSig_results, microbe = microbe_data)
 TIMEx_Micro <- combineDat(TIMEx_results, microbe = microbe_data)
 ```
 
-```{r}
+```{r Generate Clustered Heatmaps}
 clustHeat <- function(dat, gene_set, microbeDat, microbeOrder, title, x.text){
-  Cor_Dat <- cor(dat[, -1], method = "spearman")
+  
+  Cor_Dat <- dat[, -1]
+  Cor_Dat <- as.matrix(Cor_Dat)
+  Cor_Dat <- Hmisc::rcorr(Cor_Dat, type = "spearman")
+  
+  gs_labels <- names(gene_set)
 
-gs_labels <- names(gene_set)
-
-Filtered_Dat <- reshape2::melt(Cor_Dat) %>%
-  dplyr::rename(Gene_Set = Var1, Microbe = Var2) %>%
-  dplyr::filter(Gene_Set %in% gs_labels,
-                Microbe %in% colnames(microbeDat)[-1])
-
-Filtered_Dat$Gene_Set <- stringr::str_remove_all(Filtered_Dat$Gene_Set, "HALLMARK_")
-
- GS <- tidyr::pivot_wider(Filtered_Dat, names_from = "Gene_Set", values_from = "value")
- GS <- as.matrix(GS[, -1]) # -1 to omit categories from matrix
-
-# Cluster based on euclidean distance
-clust <- hclust(dist(t(GS)))
-
-ggplot(Filtered_Dat, aes(x=Gene_Set, y=Microbe, fill=value)) +
- geom_tile(color = "black") +
-  labs(title = title) +
-    scale_fill_gradient2(low = "#075AFF",
-                       mid = "#FFFFCC",
-                       high = "#FF0000") +
-  coord_fixed() +
-  theme(axis.text.x = element_text(angle = 45, hjust=1, size = x.text),
-        axis.text.y = element_text(size = 10),
-        legend.position = 'bottom') +
-  scale_x_discrete(limits = colnames(GS)[clust$order]) +
-  scale_y_discrete(limits = rev(microbeOrder))
+  Filtered_Dat <- reshape2::melt(Cor_Dat$r) %>%
+    dplyr::rename(Gene_Set = Var1, Microbe = Var2) %>%
+    dplyr::filter(Gene_Set %in% gs_labels,
+                  Microbe %in% colnames(microbeDat)[-1])
+  
+  Filtered_Dat$Gene_Set <- stringr::str_remove_all(Filtered_Dat$Gene_Set, "HALLMARK_")
+  
+   GS <- tidyr::pivot_wider(Filtered_Dat, names_from = "Gene_Set", values_from = "value")
+   microbe_names <- GS[, 1]
+   GS <- as.matrix(GS[, -1]) # -1 to omit microbe name column from matrix
+   rownames(GS) <- microbe_names$Microbe
+  
+  # Cluster based on euclidean distance
+  clust <- hclust(dist(t(GS)))
+  
+  ggplot(Filtered_Dat, aes(x=Gene_Set, y=Microbe, fill=value)) +
+   geom_tile(color = "black") +
+    labs(title = title) +
+      scale_fill_gradient2(low = "#075AFF",
+                         mid = "#FFFFCC",
+                         high = "#FF0000") +
+    coord_fixed() +
+    theme(axis.text.x = element_text(angle = 45, hjust=1, size = x.text),
+          axis.text.y = element_text(size = 10),
+          legend.position = 'bottom') +
+    scale_x_discrete(limits = colnames(GS)[clust$order]) +
+    scale_y_discrete(limits = rev(microbeOrder))
 }
 
 # Plot the 
@@ -173,25 +178,46 @@ TIMEx_clust <- clustHeat(TIMEx_Micro, TIMEx, microbe_data, microbe_order, "TIMEx
 IOSig_clust <- clustHeat(GeneSig_Micro, IOSig_geneset, microbe_data, microbe_order, "IOSig Signatures", x.text = 8)
 ```
 
-save heatmap objects
-```{r}
-saveRDS(Microbe_Effect_Size, file = "../data/Microbe_Effect_Size.rds")
-saveRDS(Hall_clust, file = "../data/Hall_clust.rds")
-saveRDS(TIMEx_clust, file = "../data/TIMEx_clust.rds")
-saveRDS(IOSig_clust , file = "../data/IOSig_clust .rds")
+```{R Generate P-Value Matricies}
+getPvals <- function(dat, gene_set, microbeDat, microbeOrder, gene_set_order){
+  Cor_Dat <- dat[, -1]
+  Cor_Dat <- as.matrix(Cor_Dat)
+  Cor_Dat <- Hmisc::rcorr(Cor_Dat, type = "spearman")
+  
+  gs_labels <- names(gene_set)
+
+  Filtered_Dat <- reshape2::melt(Cor_Dat$P) %>%
+    dplyr::rename(Gene_Set = Var1, Microbe = Var2) %>%
+    dplyr::filter(Gene_Set %in% gs_labels,
+                  Microbe %in% colnames(microbeDat)[-1])
+  
+  Filtered_Dat$Gene_Set <- stringr::str_remove_all(Filtered_Dat$Gene_Set, "HALLMARK_")
+  
+   GS <- tidyr::pivot_wider(Filtered_Dat, names_from = "Gene_Set", values_from = "value")
+   microbe_names <- GS[, 1]
+   GS <- as.matrix(GS[, -1]) # -1 to omit microbe name column from matrix
+   rownames(GS) <- microbe_names$Microbe
+   
+   pValueMatrix <- GS[microbeOrder, gene_set_order]
+   
+   return(pValueMatrix)
+}
+
+Hall_PVal <- getPvals(Hall_Micro, Hallmark, microbe_data, microbe_order, gene_set_order = Hall_clust[["plot_env"]][["clust"]][["order"]])
+TIMEx_PVal <- getPvals(TIMEx_Micro, TIMEx, microbe_data, microbe_order, gene_set_order = TIMEx_clust[["plot_env"]][["clust"]][["order"]])
+IOSig_PVal <- getPvals(GeneSig_Micro, IOSig_geneset, microbe_data, microbe_order, gene_set_order = IOSig_clust[["plot_env"]][["clust"]][["order"]])
 ```
 
+```{r Combine Plots}
+clustered_plots <- ggarrange(Hall_clust,
+                             TIMEx_clust,
+                             IOSig_clust,
+                             nrow = 3, ncol = 1, common.legend = T)
 
-<!-- ```{r Combine Plots} -->
-<!-- clustered_plots <- ggarrange(Hall_clust, -->
-<!--                              TIMEx_clust, -->
-<!--                              IOSig_clust, -->
-<!--                              nrow = 3, ncol = 1, common.legend = T) -->
+Combined_Plots <- ggarrange(clustered_plots, Microbe_Effect_Size, ncol = 2)
 
-<!-- Combined_Plots <- ggarrange(clustered_plots, Microbe_Effect_Size, ncol = 2) -->
-
-<!-- Combined_Plots -->
-<!-- ``` -->
+Combined_Plots
+```
 
 
 
