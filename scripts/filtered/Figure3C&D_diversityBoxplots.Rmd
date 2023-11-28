@@ -1,0 +1,264 @@
+---
+title: "diversity boxplots"
+author: "Caroline Wheeler"
+date: "2/8/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(randomForest)
+library(ggplot2)
+library(ROCR)
+library(gdata)
+library(vegan)
+```
+
+read in data
+```{r}
+response <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE) %>%
+  dplyr::rename("sample" = Sample_ID,
+                "response" = Response) %>%
+  filter(Cancer_Type == "Melanoma") %>%
+  dplyr::select(sample, response) %>%
+  mutate(response = ifelse(response == 1, "responder", "non-responder"))
+
+# Read in counts
+counts <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/k2bout_filt.txt") %>%
+  filter(sample %in% response$sample) 
+```
+
+calculate RA
+```{r}
+ra <- counts %>%
+  gather(key = "microbe", value = "counts", 2:ncol(counts))
+  
+ra$total <- ave(ra$counts, ra$sample, FUN=sum)
+
+ra <- ra %>%
+  mutate(exo.ra = counts/total)
+```
+
+prep counts for calc
+```{r}
+counts <- counts %>%
+  remove_rownames %>% 
+  column_to_rownames(var="sample")
+```
+
+
+
+<!-- RA wide -->
+<!-- ```{r} -->
+<!-- taxawide <- taxa %>% -->
+<!--   mutate(exo.ra = as.integer(exo.ra)) %>% -->
+<!--   spread(microbe, exo.ra) %>% -->
+<!--   remove_rownames %>%  -->
+<!--   column_to_rownames(var="sample")  -->
+<!-- ``` -->
+
+diversity calcs 
+```{r}
+div <- ra %>% 
+  group_by(sample) %>%
+  summarize(sobs = specnumber(exo.ra),
+            shannon = diversity(exo.ra, index = "shannon"),
+            simpson = diversity(exo.ra, index = "simpson"),
+            invsimpson = 1/simpson) %>%
+  mutate(chao = as.data.frame(t(estimateR(counts)))$S.chao1,
+         ACE = as.data.frame(t(estimateR(counts)))$S.ACE)
+```
+
+<!-- diversity calcs w/ counts - Shannon entropy, Simpson’s index, Chao1 -->
+<!-- ```{r} -->
+<!-- # simpson  -->
+<!-- test <- as.data.frame(diversity(counts, index = "simpson")) -->
+<!-- test$sample <- row.names(test) -->
+<!-- rownames(test) <- NULL -->
+<!-- simpson <- test %>% -->
+<!--   dplyr::rename("alpha_diversity" = `diversity(counts, index = "simpson")`) -->
+
+<!-- # shannon -->
+<!-- test <- as.data.frame(diversity(counts, index = "shannon")) -->
+<!-- test$sample <- row.names(test) -->
+<!-- rownames(test) <- NULL -->
+<!-- shannon <- test %>% -->
+<!--   dplyr::rename("alpha_diversity" = `diversity(counts, index = "shannon")`) -->
+<!-- ``` -->
+
+Function for shuffling and creating training / testing groups for getROC 
+```{r}
+k_validate <- function(clin_data, feature_data, seed){
+  set.seed(seed)
+  
+  # Grab responder samples #
+  responder_clin <- clin_data %>%
+    dplyr::filter(response == "responder")
+  # Shuffle responder samples via seed #
+  responder_clin <- responder_clin[sample(nrow(responder_clin)), ]
+  
+  # Grab non-responder samples #
+  non_responder_clin <- clin_data %>%
+    dplyr::filter(response == "non-responder")
+  # Shuffle non-responder samples via seed #
+  non_responder_clin <- non_responder_clin[sample(nrow(non_responder_clin)), ]
+
+    # Creating index data frame for the R/NRs to ensure coverage for each group #
+    responder_indexes <- c(rep(1, 8), rep(2, 8), rep(3, 8), rep(4, 8), rep(5, 7))
+    non_responder_indexes <- c(rep(1, 6), rep(2, 7), rep(3, 6), rep(4, 7), rep(5, 6))
+    out <- list()
+    
+    # Creating testing and training groups #
+    for(i in 1:5){
+      rIndexes <- which(responder_indexes == i, arr.ind = TRUE)
+      nrIndexes <- which(non_responder_indexes == i, arr.ind = TRUE)
+      
+      test.clin <- rbind(responder_clin[rIndexes, ], non_responder_clin[nrIndexes, ])
+      train.clin <- rbind(responder_clin[-rIndexes, ], non_responder_clin[-nrIndexes, ])
+      
+      test.seq <- feature_data[which(feature_data$sample %in% test.clin$sample), ]
+      test.seq <- test.seq[match(test.clin$sample, test.seq$sample), ]
+      
+      train.seq <- feature_data[which(feature_data$sample %in% train.clin$sample), ]
+      train.seq <- train.seq[match(train.clin$sample, train.seq$sample), ]
+      
+      if(all(train.seq$sample == train.clin$sample) == FALSE){
+        stop("Training Sample_IDs do not match")
+      }
+      if(all(test.seq$sample == test.clin$sample) == FALSE){
+        stop("Testing Sample_IDs do not match")
+      }
+      
+      # Creating the RF model #
+      out[[i]] <- getROC(train.seq, train.clin, test.seq, test.clin)
+    }
+  
+  
+  avg_auc <- lapply(out, function(x){ x[[1]]})
+  message("\nAccuracy average: ", (rowMeans(as.data.frame(avg_auc))))
+  return(out)
+}
+
+# ROC function
+# Function create and test RF model #
+getROC <- function(train, clin.train, test, clin.test){
+  model.training <- randomForest(x = train[,-1, drop=FALSE], y = as.factor(clin.train$response))
+  test.preds <- predict(model.training, test[,-1, drop=FALSE])
+  
+  print(model.training)
+  # Check variable importance
+  varImpPlot(model.training)
+  # Prediction confusion matrix
+  table(observed = clin.test$response, predicted = test.preds)
+  
+  prediction_for_roc_curve <- predict(model.training,test[,-1, drop=FALSE],type="prob")
+  pred <- prediction(prediction_for_roc_curve[,2], clin.test$response, label.ordering = c("non-responder", "responder"))
+  perf <- performance(pred, "tpr", "fpr")
+  
+  auc_ROCR <- performance(pred, measure = "auc")
+  print(auc_ROCR)
+  auc <- auc_ROCR@y.values[[1]]
+  print(auc)
+  
+  df <- data.frame(FalsePositive=c(perf@x.values[[1]]),
+                   TruePositive=c(perf@y.values[[1]]))
+  out <- list(auc, df)
+  
+  return(out)
+}
+
+# Grabbing AUROC values from input models #
+grabVals <- function(input){
+  out <- list()
+  for(i in 1:5){
+    for(j in 1:5){
+      out <- append(out, input[[i]][[j]][[1]])
+    }
+  }
+  out
+}
+
+# Main function call to generate RF models using 5 seeds #
+kTest <- function(clin, feature, seeds){
+  out <- list()
+  for(i in 1:length(seeds)){
+    out[[i]] <- k_validate(clin, feature, seed = seeds[i])
+  }
+  out <- grabVals(out)
+  
+  # CW edit to function 
+  out <- do.call(rbind.data.frame, out)
+  colnames(out) <- c("AUC")
+  out
+}
+```
+
+```{r}
+seed_list <- c(12345, 23422, 23425, 23422, 76543)
+```
+
+```{r}
+simp_auc <- kTest(response, div %>% select(sample, simpson), seed_list)
+simp_auc $signature <- "Simpson's"
+
+shan_auc <- kTest(response, div %>% select(sample, shannon), seed_list)
+shan_auc$signature <- "Shannon's"
+
+invsim_auc <- kTest(response, div %>% select(sample, invsimpson), seed_list)
+invsim_auc$signature <- "Inverse Simpson's"
+
+chao_auc <- kTest(response, div %>% select(sample, chao) , seed_list)
+chao_auc$signature <- "Chao1"
+
+ace_auc <- kTest(response, div %>% select(sample, ACE) , seed_list)
+ace_auc$signature <- "ACE"
+```
+
+prep for boxplot
+```{r}
+aucs <- rbind(simp_auc, shan_auc, chao_auc, ace_auc)
+```
+
+```{r}
+plot <- ggplot(data=aucs, mapping=aes(x=reorder(signature, AUC), y=AUC, col=signature)) +
+  geom_boxplot() +
+  geom_jitter(size=0.4, alpha=0.9) +
+  theme_bw(base_size = 7) +
+  scale_color_manual(values=c("darkgoldenrod2", "salmon2", "cornflowerblue", "deeppink4")) +
+  theme(legend.position = "none")
+
+plot
+
+ggsave(plot = plot, file = "../../figures/fig3_diversityAUCboxplots_filtered.png", dev = "png", width = 3, height = 4, dpi = 400)
+```
+
+plot diversity measure strat by response 
+```{r}
+div <- merge(div, response) %>%
+  select(-sobs) %>%
+  gather(key = "Signature", value = "score", 2:6)
+```
+
+get rid of inv simpson
+```{r}
+div <- div %>%
+  filter(Signature != "invsimpson")
+```
+
+
+```{r}
+div %>%
+  ggplot(aes(x=response, y=score)) +
+  geom_boxplot(aes(fill = response)) + 
+  facet_wrap(~Signature, scales = "free") + 
+  theme_bw(base_size = 7) +
+  scale_fill_manual(values=c("cornflowerblue", "deeppink4")) +
+  theme(legend.position = "none")
+
+ggsave(file = "../../figures/fig3_diversityBoxplots_filtered.png", dev = "png", width = 3, height = 4, dpi = 400)
+```
+
+
+

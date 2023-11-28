@@ -1,0 +1,156 @@
+---
+title: "fig 4 -  circle"
+author: "Caroline Wheeler"
+date: "3/24/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(ggplot2)
+```
+
+read in RDS
+```{r}
+Hall_clust <- readRDS("../data/Hall_clust.rds")
+TIMEx_clust <- readRDS("../data/TIMEx_clust.rds")
+IOSig_clust <- readRDS("../data/IOSig_clust .rds")
+```
+
+Microbe data
+```{r Load and format required data}
+data <- readRDS("../data/deseqResults.RDS")
+data <- data %>%
+  filter(level == "species" & !is.na(delabel))
+
+new.rownames <- substr(rownames(data), 4, nchar(rownames(data)))
+rownames(data) <- new.rownames
+```
+
+Define microbe order 
+```{r Generate Microbe Order and Effect Size}
+microbe_order <- data %>%
+  dplyr::arrange(desc(log2FoldChange)) %>%
+  rownames(.)
+```
+
+
+### Hallmark 
+```{r}
+temp <- Hall_clust$data
+```
+
+Set gene label angles 
+```{r}
+labs <- c(colnames(Hall_clust$plot_env$GS)[Hall_clust$plot_env$clust$order]) 
+
+lab.df <- as.data.frame(cbind(x = 1:50, labs))
+
+lab.df$ang <- seq(from=(120/nrow(lab.df))/1.5, to=(1.5* (120/nrow(lab.df)))-120, length.out=nrow(lab.df)) + 80
+lab.df$hjust <- 0
+lab.df$hjust[which(lab.df$ang < -90)] <- 1
+lab.df$ang[which(lab.df$ang < -90)] <- (180+lab.df$ang)[which(lab.df$ang < -90)]
+```
+
+```{r}
+heat <- temp %>%
+  ggplot(aes(x=as.numeric(fct_relevel(temp$Gene_Set, colnames(Hall_clust$plot_env$GS)[Hall_clust$plot_env$clust$order])), y=as.numeric(fct_relevel(Microbe, rev(microbe_order))), fill=value)) +
+  geom_tile(show.legend = FALSE, color = "black") +
+  scale_fill_gradient2(low = "#075AFF",
+                       mid = "#FFFFCC",
+                       high = "#FF0000") +
+  geom_text(data = lab.df, inherit.aes = FALSE, aes(x = as.numeric(x), y = 17, label = labs, angle=ang, hjust=hjust), size=1.2) + 
+  ylim(c(-40,35)) +
+  xlim(c(0, 150)) +
+  theme_void() +
+  coord_polar() 
+
+heat
+ggsave("../figures/hall_clust_heatmap.pdf", dev = "pdf")
+```
+
+### IOSig 
+```{r}
+temp <- IOSig_clust$data
+```
+
+set gene label angles
+```{r}
+labs <- c(colnames(IOSig_clust$plot_env$GS)[IOSig_clust$plot_env$clust$order]) 
+
+labs.filler <- as.data.frame(cbind(x=1:55, labs=NA))
+lab.df <- as.data.frame(cbind(x = 56:86, labs))
+lab.df <- rbind(labs.filler, lab.df)
+
+lab.df$ang <- seq(from=(208.8/nrow(lab.df))/1.5, to=(1.5* (208.8/nrow(lab.df)))-208.8, length.out=nrow(lab.df)) + 80
+lab.df$hjust <- 0
+lab.df$hjust[which(lab.df$ang < -90)] <- 1
+lab.df$ang[which(lab.df$ang < -90)] <- (180+lab.df$ang)[which(lab.df$ang < -90)]
+```
+
+
+```{r}
+temp %>%
+  ggplot(aes(x=as.numeric(fct_relevel(temp$Gene_Set, colnames(IOSig_clust$plot_env$GS)[IOSig_clust$plot_env$clust$order])) + 55, y=as.numeric(fct_relevel(Microbe, rev(microbe_order))), fill=value)) +
+   geom_tile(show.legend = FALSE, color = "black") +
+  scale_fill_gradient2(low = "#075AFF",
+                       mid = "#FFFFCC",
+                       high = "#FF0000") +
+  geom_text(data = lab.df, inherit.aes = FALSE, aes(x = as.numeric(x), y = 17, label = labs, angle=ang, hjust=hjust), size=1.2) + 
+  ylim(c(-40,35)) +
+  xlim(c(0, 150)) +
+  theme_void() +
+  coord_polar()
+
+ggsave("../figures/iosig_heatmap.pdf", dev = "pdf")
+```
+### Timex
+```{r}
+temp <- TIMEx_clust$data
+```
+
+set gene label angles
+```{r}
+labs <- c(colnames(TIMEx_clust$plot_env$GS)[TIMEx_clust$plot_env$clust$order]) 
+
+# FOR GRANT VERSION
+labs <- sub(".*_", "", labs)  
+# END FOR GRANT VERSION
+
+labs.filler <- as.data.frame(cbind(x=1:91, labs=NA))
+lab.df <- as.data.frame(cbind(x = 92:128, labs))
+lab.df <- rbind(labs.filler, lab.df)
+
+lab.df$ang <- seq(from=(307.2/nrow(lab.df))/1.5, to=(1.5* (307.2/nrow(lab.df)))-307.2, length.out=nrow(lab.df)) + 80
+lab.df$hjust <- 0
+lab.df$hjust[which(lab.df$ang < -90)] <- 1
+lab.df$ang[which(lab.df$ang < -90)] <- (180+lab.df$ang)[which(lab.df$ang < -90)]
+```
+
+
+```{r}
+temp %>%
+  ggplot(aes(x=as.numeric(fct_relevel(temp$Gene_Set, colnames(TIMEx_clust$plot_env$GS)[TIMEx_clust$plot_env$clust$order])) + 91, y=as.numeric(fct_relevel(Microbe, rev(microbe_order))), fill=value)) +
+   geom_tile(show.legend = FALSE, color = "black") +
+  scale_fill_gradient2(low = "#075AFF",
+                       mid = "#FFFFCC",
+                       high = "#FF0000") +
+  geom_text(data = lab.df, inherit.aes = FALSE, aes(x = as.numeric(x), y = 17, label = labs, angle=ang, hjust=hjust), size=1.2) + 
+  ylim(c(-40,35)) +
+  xlim(c(0, 150)) +
+  theme_void() +
+  coord_polar()
+
+ggsave("../figures/grant_version_timex_clust_heatmap.pdf", dev = "pdf")
+```
+
+<!-- ### example label full circle -->
+<!-- ```{r} -->
+<!-- lab.df$ang <- seq(from=(360/nrow(lab.df))/1.5, to=(1.5* (360/nrow(lab.df)))-360, length.out=nrow(lab.df))+80 -->
+<!-- lab.df$hjust <- 0 -->
+<!-- lab.df$hjust[which(lab.df$ang < -90)] <- 1 -->
+<!-- lab.df$ang[which(lab.df$ang < -90)] <- (180+lab.df$ang)[which(lab.df$ang < -90)] -->
+<!-- ``` -->
+

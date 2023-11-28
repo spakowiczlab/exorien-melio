@@ -1,0 +1,208 @@
+---
+title: "Figure 4"
+output: html_document
+date: "2023-02-09"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Figure 4 #
+
+This file generates the single sample GSEA results and the effect
+size results as seen in figure 4.
+
+```{r Required Packges, include=FALSE}
+library(tidyverse)
+library(ComplexHeatmap)
+library(GSVA)
+#library(ggpubr)
+```
+
+
+### Effect Size Plot ###
+
+**Required Data**
+- Microbe Data
+
+```{r Load and format required data}
+data <- readRDS("../../data/deseqResults_filtered.RDS")
+data <- data %>%
+  filter(level == "species" & !is.na(delabel))
+
+new.rownames <- substr(rownames(data), 4, nchar(rownames(data)))
+rownames(data) <- new.rownames
+
+labs <- readRDS("../../data/phylum_labels.RDS")
+```
+
+```{r}
+data <- data %>%
+  left_join(labs) %>%
+  mutate(phylum = substr(phylum, 4, nchar(phylum)),
+         phylum = ifelse(grepl("unclass", phylum), substr(phylum, 16, nchar(phylum)), phylum)) %>%
+  slice_max(abs(log2FoldChange), n = 15)
+```
+
+```{r Generate Microbe Order and Effect Size}
+microbe_order <- data %>%
+  dplyr::arrange(desc(log2FoldChange)) %>%
+  rownames(.)
+
+Microbe_Effect_Size <- data %>%
+  ggplot(aes(x=log2FoldChange, y=reorder(delabel, log2FoldChange), fill = phylum)) +
+  geom_bar(stat = "identity") + 
+  theme_bw() +
+  ylab("Species") +
+  xlab("Effect Size") +
+  scale_fill_manual(values=c("red3", "khaki3", "tan1", "cornflowerblue")) +
+  theme_minimal()
+
+Microbe_Effect_Size
+ggsave(file = "../../figures/effectSize_filtered.png", dev = "png", width = 11, height = 8, dpi = 600)
+```
+
+### Single single Gene Set Enrichment Analysis ###
+
+**Required Data**  
+- IO_NOVA Melanoma Expression Data  
+- IO_NOVA Melanoma Clinical Data  
+- Microbe Data  
+- Hallmark Gene Set  
+- TIMEx Cell Types  
+- IOSig Gene Set
+```{r Load in required data, include=FALSE}
+seq_data <- readr::read_tsv("../data/IO_NOVA_mel_seq.txt")
+clin_data <- readr::read_tsv("../data/IO_NOVA_mel_clin.txt")
+microbe_data <- readr::read_csv("../data/Microbes.csv")
+load("../data/Hallmark.rda")
+load("../data/TIMEx.rda")
+load("../data/IOSig_geneset.rda")
+seq_data <- seq_data[!duplicated(seq_data$Genes), ]
+```
+
+```{r Generate Expression Set Object}
+genExpSet <- function(seq, clin){
+    # Prep Seq #
+  seq <- as.data.frame(seq)
+  genes <- seq$Genes
+  seq <- seq[, -1]
+  rownames(seq) <- genes
+  
+  # Prep Clin #
+  clin <- as.data.frame(clin)
+  sample_ids <- clin$Sample_ID
+  rownames(clin) <- sample_ids
+  
+  seq <- seq[, match(sample_ids, colnames(seq))]
+  
+  seq <- seq %>%
+    dplyr::mutate(Row_sum = rowSums(.)) %>%
+    dplyr::filter(Row_sum != 0) %>%
+    dplyr::select(-Row_sum)
+    
+  seq <- as.matrix(seq)
+  
+  clin <- new("AnnotatedDataFrame", data = clin)
+  out <- Biobase::ExpressionSet(assayData = seq, phenoData = clin)
+  out
+}
+
+ExpSet <- genExpSet(seq_data, clin_data)
+```
+
+```{r Run ssGSEA, include=FALSE}
+# run single sample GSEA on the Hallmark, TIMEx, and IOSig signatures gene sets #
+Hallmark_results <- GSVA::gsva(ExpSet, gset.idx.list = Hallmark, method = 'ssgsea')
+Hallmark_results <- Biobase::exprs(Hallmark_results)
+GeneSig_results <- GSVA::gsva(ExpSet, gset.idx.list = IOSig_geneset, method = 'ssgsea')
+GeneSig_results <- Biobase::exprs(GeneSig_results)
+TIMEx_results <- GSVA::gsva(ExpSet, gset.idx.list = TIMEx, method = 'ssgsea')
+TIMEx_results <- Biobase::exprs(TIMEx_results)
+```
+
+```{r Combining Microbe and ssGSEA data}
+combineDat <- function(gene_set, microbe){
+  gene_set <- as.data.frame(gene_set)
+  gene_set$Pathway <- rownames(gene_set)
+  gene_set <- gene_set %>%
+    tidyr::pivot_longer(cols = -Pathway, names_to = "Sample_ID", values_to = "NES")
+  
+  microbe_data <- microbe_data %>%
+    tidyr::pivot_longer(cols = -Sample_ID, names_to = "Microbe", values_to = "Prevalence")
+  out <- dplyr::inner_join(gene_set, microbe_data, by = "Sample_ID")
+  out <- out %>%
+    tidyr::pivot_wider(names_from = Pathway, values_from = NES) %>%
+    tidyr::pivot_wider(names_from = Microbe, values_from = Prevalence)
+  out
+}
+
+# Combine Microbe data with the ssGSEA results for clustering #
+Hall_Micro <- combineDat(Hallmark_results, microbe = microbe_data)
+GeneSig_Micro <- combineDat(GeneSig_results, microbe = microbe_data)
+TIMEx_Micro <- combineDat(TIMEx_results, microbe = microbe_data)
+```
+
+```{r}
+clustHeat <- function(dat, gene_set, microbeDat, microbeOrder, title, x.text){
+  Cor_Dat <- cor(dat[, -1], method = "spearman")
+
+gs_labels <- names(gene_set)
+
+Filtered_Dat <- reshape2::melt(Cor_Dat) %>%
+  dplyr::rename(Gene_Set = Var1, Microbe = Var2) %>%
+  dplyr::filter(Gene_Set %in% gs_labels,
+                Microbe %in% colnames(microbeDat)[-1])
+
+Filtered_Dat$Gene_Set <- stringr::str_remove_all(Filtered_Dat$Gene_Set, "HALLMARK_")
+
+ GS <- tidyr::pivot_wider(Filtered_Dat, names_from = "Gene_Set", values_from = "value")
+ GS <- as.matrix(GS[, -1]) # -1 to omit categories from matrix
+
+# Cluster based on euclidean distance
+clust <- hclust(dist(t(GS)))
+
+ggplot(Filtered_Dat, aes(x=Gene_Set, y=Microbe, fill=value)) +
+ geom_tile(color = "black") +
+  labs(title = title) +
+    scale_fill_gradient2(low = "#075AFF",
+                       mid = "#FFFFCC",
+                       high = "#FF0000") +
+  coord_fixed() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1, size = x.text),
+        axis.text.y = element_text(size = 10),
+        legend.position = 'bottom') +
+  scale_x_discrete(limits = colnames(GS)[clust$order]) +
+  scale_y_discrete(limits = rev(microbeOrder))
+}
+
+# Plot the 
+Hall_clust <- clustHeat(Hall_Micro, Hallmark, microbe_data, microbe_order, "Hallmark Gene Sets", x.text = 6)
+TIMEx_clust <- clustHeat(TIMEx_Micro, TIMEx, microbe_data, microbe_order, "TIMEx Cell Types", x.text = 8)
+IOSig_clust <- clustHeat(GeneSig_Micro, IOSig_geneset, microbe_data, microbe_order, "IOSig Signatures", x.text = 8)
+```
+
+save heatmap objects
+```{r}
+saveRDS(Microbe_Effect_Size, file = "../data/Microbe_Effect_Size.rds")
+saveRDS(Hall_clust, file = "../data/Hall_clust.rds")
+saveRDS(TIMEx_clust, file = "../data/TIMEx_clust.rds")
+saveRDS(IOSig_clust , file = "../data/IOSig_clust .rds")
+```
+
+
+<!-- ```{r Combine Plots} -->
+<!-- clustered_plots <- ggarrange(Hall_clust, -->
+<!--                              TIMEx_clust, -->
+<!--                              IOSig_clust, -->
+<!--                              nrow = 3, ncol = 1, common.legend = T) -->
+
+<!-- Combined_Plots <- ggarrange(clustered_plots, Microbe_Effect_Size, ncol = 2) -->
+
+<!-- Combined_Plots -->
+<!-- ``` -->
+
+
+
+
