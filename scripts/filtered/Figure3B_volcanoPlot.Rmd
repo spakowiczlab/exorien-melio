@@ -17,7 +17,10 @@ library(dplyr)
 
 read in data 
 ```{r}
-taxa <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_counts-with-taxonomy_filtered.csv")
+#taxa <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_counts-with-taxonomy-humanRNA-filter.csv")
+# taxa <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_counts-with-taxonomy.csv")
+taxa <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_unnormalized-microbes.csv")
+
 clin <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE) %>%
   dplyr::rename("sample" = Sample_ID,
          "IO.responder" = Response) %>%
@@ -34,7 +37,7 @@ taxa <- taxa %>%
 clin <- clin %>% 
   remove_rownames %>% 
   column_to_rownames(var="sample") %>%
-  mutate(IO.responder = ifelse(IO.responder == 0, "Non-Responder", "Responder"))
+  mutate(IO.responder = ifelse(IO.responder == 0, "Non-Responder", "Responder")) 
 ```
 
 function to get count tables
@@ -164,8 +167,8 @@ resPlot <- resPlot %>%
 <!-- ``` -->
 
 ```{r}
-#saveRDS(resPlot, file ="../../data/deseqResults_filtered.RDS")
-resPlot <- readRDS("../../data/deseqResults_filtered.RDS")
+#saveRDS(resPlot, file ="../../data/deseqResults_Ht_filt.RDS")
+resPlot <- readRDS("../../data/deseqResults_Ht_filt.RDS")
 
 # save for supp
 # resPlot <- resPlot %>%
@@ -176,9 +179,9 @@ resPlot <- readRDS("../../data/deseqResults_filtered.RDS")
 ```
 
 ```{r}
-p = 0.001
-low <- -5
-high <- 5
+p = 0.01
+low <- -4
+high <- 2
 highlight_df <- resPlot %>% 
   dplyr::filter(pvalue < p & (log2FoldChange < low | log2FoldChange > high))
 ```
@@ -205,7 +208,7 @@ g <- ggplot(resPlot,aes(x=log2FoldChange, y=-log10(pvalue), label=delabel)) +
   theme_bw(base_size = 5) +
   geom_point(colour="honeydew4") +
   geom_point(data=highlight_df, aes(x=log2FoldChange, y=-log10(pvalue), label=delabel, color = `Taxonomic Grouping`),size=1) +
-  scale_color_manual(values=c("red3", "salmon2", "cornflowerblue")) +
+  #scale_color_manual(values=c("red3", "salmon2", "cornflowerblue", "plum", "green")) +
   geom_vline(xintercept=c(low, high), linetype="dotted") +
   geom_hline(yintercept=3, linetype="dotted") + 
   theme_bw(base_size = 5) 
@@ -213,7 +216,7 @@ g
 ```
 
 ```{r}
-ggsave(plot = g, file = "../../figures/fig3_volcano_filtered.png", dev = "png", width = 4, height = 4, dpi = 600)
+ggsave(plot = g, file = "../../figures/fig3_volcano_Htfilt.png", dev = "png", width = 4, height = 4, dpi = 600)
 ```
 
 zoom in 
@@ -229,7 +232,7 @@ g <- ggplot(resPlot.z,aes(x=log2FoldChange, y=-log10(pvalue), label=delabel)) +
   theme_bw(base_size = 5) +
   geom_point(colour="honeydew4") +
   geom_point(data=highlight_df.z, aes(x=log2FoldChange, y=-log10(pvalue), label=delabel, color = `Taxonomic Grouping`),size=1) +
-  scale_color_manual(values=c("red3", "salmon2", "cornflowerblue")) +
+  #scale_color_manual(values=c("red3", "salmon2", "cornflowerblue")) +
   geom_vline(xintercept=c(low, high), linetype="dotted") +
   geom_hline(yintercept=3, linetype="dotted") + 
   theme_bw(base_size = 5) 

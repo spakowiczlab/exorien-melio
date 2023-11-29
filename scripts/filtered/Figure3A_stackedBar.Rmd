@@ -18,7 +18,7 @@ library(patchwork)
 
 read in data 
 ```{r}
-taxa <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_counts-with-taxonomy_filtered.csv")
+taxa <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_counts-with-taxonomy-humanRNA-filter.csv")
 clin <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE) %>%
   dplyr::rename("sample" = Sample_ID) %>%
   filter(Cancer_Type == "Melanoma")
@@ -66,24 +66,25 @@ exora.p.hist <- merge(clin, exora.p)
 ```{r}
 exora.p.hist <- exora.p.hist %>%
    mutate(phylum = ifelse(phylum %in% large.phyls, phylum, "Other"),
-          phylum = gsub("^p__", "", phylum),
-          phylum = ifelse(phylum == "unclassified-c__Cryptophyceae", "Cryptophyceae", phylum))
+          phylum = gsub("^p__", "", phylum))
+#          phylum = ifelse(phylum == "unclassified-c__Cryptophyceae", "Cryptophyceae", phylum))
 ```
 
 prep for plot
 ```{r}
-proteo <- exora.p.hist %>%
-  filter(phylum == "Uroviricota") %>%
-  dplyr::rename(proteo_count = "count") %>%
-  select(sample, proteo_count)
+ord <- exora.p.hist %>%
+  group_by(sample) %>%
+  summarize(total = sum(count))
 
-proteo <- proteo[order(proteo$proteo_count),]
-plotOrder <- proteo$sample
-exora.p.hist <- merge(proteo, exora.p.hist)
+ord <- ord[order(ord$total),]
+plotOrder <- ord$sample
+exora.p.hist <- merge(ord, exora.p.hist)
 exora.p.hist <- exora.p.hist %>%
-  dplyr::mutate(sample = fct_reorder(sample, dplyr::desc(proteo_count)))
+  dplyr::mutate(sample = fct_reorder(sample, dplyr::desc(total)))
 
-exora.p.hist$phylum <- factor(exora.p.hist$phylum, levels = c("Other", "Actinobacteria", "Bacteroidetes", "Basidiomycota", "Firmicutes","Cryptophyceae", "Proteobacteria", "Uroviricota"))
+# exora.p.hist$phylum <- factor(exora.p.hist$phylum, levels = c("Other", "Actinobacteria", "Bacteroidetes", "Basidiomycota", "Firmicutes","Cryptophyceae", "Proteobacteria", "Uroviricota"))
+
+exora.p.hist$phylum <- factor(exora.p.hist$phylum, levels = c("Other", "Actinobacteria", "Ascomycota", "Bacteroidetes", "Firmicutes", "Fusobacteria", "Proteobacteria", "Uroviricota"))
 
 exora.p.hist <- exora.p.hist %>%
   mutate(Response = ifelse(Response == 0, "Non-Responder", "Responder"))
@@ -97,10 +98,11 @@ exora.p.hist <- exora.p.hist %>%
 plot
 ```{r}
 g <- exora.p.hist %>% 
-  ggplot(aes(x = sample, y = count, fill = phylum)) +
-    geom_bar(position="fill", stat = "identity") +
+  #filter(sample != "SL362815") %>%
+  ggplot(aes(x = sample, y = log(count), fill = phylum)) +
+    geom_bar( stat = "identity") +
     labs(x = "", y = "") +
-    scale_fill_manual(values = c("darkslateblue","red3", "darkgreen", "plum3", "cadetblue4", "orange", "cornflowerblue", "deeppink4"), name = "Taxa") +
+    scale_fill_manual(values = c("darkslateblue","red3", "darkgoldenrod2", "darkgreen", "salmon2", "plum", "cornflowerblue", "deeppink4"), name = "Taxa") +
     theme_minimal(base_size = 7) +
     theme(axis.text.x = element_blank(), 
           axis.ticks.x = element_blank(),
@@ -112,7 +114,8 @@ g <- exora.p.hist %>%
 
 g
 
-ggsave(g, file = "../../figures/fig3_stackedbar_filtered.png", dev = "png", width = 4.5, height = 4)
+ggsave(g, file = "../../figures/fig3_stackedbar_Ht_filt_logged.png", dev = "png", width = 4.5, height = 4)
+#ggsave(g, file = "../../figures/fig3_stackedbar_Ht_filt.png", dev = "png", width = 4.5, height = 4)
 #ggsave(g, file = "../figures/fig1_stackedbar.svg", dev = "svg", width = 7, height = 6)
 ```
 
