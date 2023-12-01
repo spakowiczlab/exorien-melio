@@ -14,7 +14,6 @@ library(ggforce)
 
 ```{r}
 ra <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_RA-with-taxonomy.csv") 
-k2 <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_counts-with-taxonomy.csv")
 counts <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_unnormalized-microbes-with-taxonomy.csv")
 
 clin <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE) %>%
@@ -50,6 +49,7 @@ ra.fus %>%
   facet_row(vars(Response), scales = "free_x", space = "free") +
   theme_bw() +
   ggtitle("RelAbun")
+ggsave("../figures/boxplot_ra_fuso.png", width = 4, height = 4, dpi = 300)
 
 ra.fus.counts %>%
   ggplot(aes(y= log(count))) +
@@ -57,6 +57,7 @@ ra.fus.counts %>%
   facet_row(vars(Response), scales = "free_x", space = "free") +
   theme_bw() +
   ggtitle("RelAbun estimated counts")
+ggsave("../figures/boxplot_ra_est_counts_fuso.png", width = 4, height = 4, dpi = 300)
 
 counts.fus %>%
   ggplot(aes(y=log(count))) +
@@ -64,5 +65,6 @@ counts.fus %>%
   facet_row(vars(Response), scales = "free_x", space = "free") +
   theme_bw() +
   ggtitle("Counts")
+ggsave("../figures/boxplot_counts_fuso.png", width = 4, height = 4, dpi = 300)
 ```
 

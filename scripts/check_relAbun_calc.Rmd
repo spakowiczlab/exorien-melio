@@ -1,0 +1,71 @@
+---
+title: "relAbun calc check"
+author: "Caroline Wheeler"
+date: "12/1/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(exoticpackage)
+```
+
+
+```{r}
+ra <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_RA-with-taxonomy.csv")
+counts <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_unnormalized-microbes.csv")
+k2 <- read.delim("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/k2bout.txt")
+
+clin <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE) %>%
+  dplyr::rename("sample" = Sample_ID,
+         "IO.responder" = Response) %>%
+  filter(Cancer_Type == "Melanoma") %>%
+  dplyr::select(sample, IO.responder) %>%
+  mutate(Response = ifelse(IO.responder == 0, "Non-Responder", "Responder"))
+
+ra <- ra %>%
+  filter(sample %in% clin$sample)
+counts <- counts %>%
+  filter(sample %in% clin$sample)
+k2 <- k2 %>%
+  filter(sample %in% clin$sample)
+```
+
+
+```{r}
+counts.total <- counts %>%
+  tidyr::gather(-sample, key = "microbe", value = "count") %>%
+  dplyr::group_by(sample) %>%
+  dplyr::summarise(total = sum(count))
+  
+counts.ra <- counts %>%
+   tidyr::gather(-sample, key = "microbe", value = "count") %>%
+    dplyr::left_join(counts.total) %>%
+    dplyr::mutate(ra = count/total) %>%
+    dplyr::select(sample, microbe, ra) %>%
+  tidyr::spread(key = "microbe", value = "ra")
+
+k2.total <- k2 %>%
+  tidyr::gather(-sample, key = "microbe", value = "count") %>%
+  dplyr::group_by(sample) %>%
+  dplyr::summarise(total = sum(count))
+
+k2.ra <- k2 %>%
+   tidyr::gather(-sample, key = "microbe", value = "count") %>%
+    dplyr::left_join(k2.total) %>%
+    dplyr::mutate(ra = count/total) %>%
+    dplyr::select(sample, microbe, ra) %>%
+  tidyr::spread(key = "microbe", value = "ra")
+```
+
+assign taxonomy
+```{r}
+kraken.met <- read.delim("/fs/ess/PAS1695/exoticpipe/external-data/kraken2-metaphlan-noplants.txt") %>% 
+  rename("Taxonomy" = d__Eukaryota)
+
+count.ra.taxa <-  exoticpackage::assign_taxonomy(kraken.met, counts.ra)
+k2.ra.taxa <- exoticpackage::assign_taxonomy(kraken.met, k2.ra)
+```
+
+
