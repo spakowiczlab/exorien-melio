@@ -9,11 +9,17 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 
 library(exoticpackage)
+library(tidyverse)
+library(readxl)
+library(drake)
+library(edgeR)
+library(snm)
 ```
 
 
 ```{r}
 ra <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_RA-with-taxonomy.csv")
+# counts.norm <- read.csv("/users/PAS1695/whee57/exorien_counts_normalized.csv") 
 counts <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_unnormalized-microbes.csv")
 k2 <- read.delim("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/k2bout.txt")
 
@@ -26,14 +32,65 @@ clin <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", hea
 
 ra <- ra %>%
   filter(sample %in% clin$sample)
+# counts.norm <- counts.norm%>%
+#   select(-X) %>%
+#   filter(sample %in% clin$sample)
 counts <- counts %>%
   filter(sample %in% clin$sample)
 k2 <- k2 %>%
   filter(sample %in% clin$sample)
 ```
 
+# normalize
+```{r}
+rna.concentrations = readxl::read_excel(file_in("/fs/ess/PAS1695/projects/exorien/data/20PRJ060OSU.RNAseq.concentration.xlsx")) %>% rename("RNASeq" = "RNAseq")
+biogroup.assignments = read.csv(file_in("/users/PAS1695/whee57/Github/exorien/processing/data/members-of-TCGA-groups.csv"), stringsAsFactors = F) %>%
+  dplyr::select(-n)
+meta.linkage = read_excel(file_in("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210707_ClinicalMolLinkage_V4_site annotation.xlsx")) %>%
+    left_join(rna.concentrations) %>%
+    mutate(Disease.Type = `Disease Type`,
+           Histology.Behavior = `Histology/Behavior`) %>%
+    left_join(biogroup.assignments)
+
+meta.linkage <- meta.linkage %>%
+  mutate(ffpe.status = ifelse(grepl("FFPE", SpecimenType), TRUE, FALSE),
+           site.info = `Site info`,
+           sample = RNASeq) %>%
+    dplyr::select(sample, ffpe.status, TCGA.code, site.info) %>%
+    dplyr::filter(sample != "")
+
+# raw.counts = read.delim(file_in("/fs/ess/PAS1695/projects/exorien/data/k2b_add-human.txt"), stringsAsFactors = F)
+# counts.passHS = check_human_percentages(raw.counts, .95)
+# 
+# rna.batchres = resolve_batches(meta.linkage, counts.passHS,
+#                                  "Concentration", "RNASeq", batch.col.name = "RNA Batch")
+# 
+#   contaminant.microbes = get_contaminants(rna.batchres$meta, rna.batchres$counts, 112358)
+#   counts.mics = resolve_contaminants(contaminant.microbes, counts.passHS, 0.1)
+# 
+#   normalization.inputs = format_for_voom_snm(counts.mics, meta.linkage)
+#   counts.norm  = voom_snm_normalization(normalization.inputs[[2]], normalization.inputs[[1]],
+#                                             "TCGA.code",c("ffpe.status", "site.info"))
+#   exora = exoticpackage::calculate_relative_abundance(counts.norm)
+# 
+#   krakenmet = read.delim(file_in("/fs/ess/PAS1695/exoticpipe/external-data/kraken2-metaphlan-noplants.txt"),
+#                          header = F, stringsAsFactors = F) %>%
+#     rename("Taxonomy" = "V1")
+#   exora.taxonomy = assign_taxonomy(krakenmet, exora)
+```
 
 ```{r}
+# counts.norm.total <- counts.norm %>%
+#     tidyr::gather(-sample, key = "microbe", value = "count") %>%
+#   dplyr::group_by(sample) %>%
+#   dplyr::summarise(total = sum(count))
+# 
+# count.norm.ra <- counts.norm %>%
+#      tidyr::gather(-sample, key = "microbe", value = "count") %>%
+#     dplyr::left_join(counts.norm.total) %>%
+#     dplyr::mutate(ra = count/total) %>%
+#     dplyr::select(sample, microbe, ra) 
+
 counts.total <- counts %>%
   tidyr::gather(-sample, key = "microbe", value = "count") %>%
   dplyr::group_by(sample) %>%
@@ -51,12 +108,18 @@ k2.total <- k2 %>%
   dplyr::group_by(sample) %>%
   dplyr::summarise(total = sum(count))
 
+k2.human <- k2 %>%
+  tidyr::gather(-sample, key = "microbe", value = "count") %>%
+  filter(microbe == "Homo.sapiens") %>%
+  select(-microbe) %>%
+  rename(hum.count = count)
+
 k2.ra <- k2 %>%
    tidyr::gather(-sample, key = "microbe", value = "count") %>%
-    dplyr::left_join(k2.total) %>%
-    dplyr::mutate(ra = count/total) %>%
-    dplyr::select(sample, microbe, ra) %>%
-  tidyr::spread(key = "microbe", value = "ra")
+    dplyr::left_join(k2.human) %>%
+    dplyr::mutate(cw.ra = count/hum.count) %>%
+    dplyr::select(sample, microbe, cw.ra, count) 
+ # tidyr::spread(key = "microbe", value = "ra")
 ```
 
 assign taxonomy
@@ -68,4 +131,40 @@ count.ra.taxa <-  exoticpackage::assign_taxonomy(kraken.met, counts.ra)
 k2.ra.taxa <- exoticpackage::assign_taxonomy(kraken.met, k2.ra)
 ```
 
+
+compare relAbun 
+```{r}
+ra.fus <- ra %>%
+  filter(microbe == "Fusobacterium.nucleatum") %>%
+  select(sample, exo.ra)
+
+k2.ra.fus <- k2.ra %>%
+  filter(microbe == "Fusobacterium.nucleatum") %>%
+  select(-microbe)
+
+fus.dif <- ra.fus %>%
+  left_join(k2.ra.fus) %>%
+  mutate(dif = cw.ra - exo.ra,
+         abs.dif = abs(dif)) %>%
+  arrange(dif) %>%
+  left_join(meta.linkage) %>%
+  select(-TCGA.code)
+```
+
+```{r}
+fus.dif$sample <- factor(fus.dif$sample, levels=unique(fus.dif$sample))
+# write.csv(fus.dif, "../data/ra_fuso_difference.csv", row.names = FALSE)
+fus.dif <- read.csv("../data/ra_fuso_difference.csv")
+
+fus.dif %>%
+  # filter(sample != "SL362815") %>%
+  ggplot(aes(x = sample, y = dif)) +
+  geom_col() +
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 0.5)) +
+  xlab("") +
+  ylab("RelAbun Difference")
+
+ggsave("../figures/relAbun_dif.png", width = 10, height = 3)
+```
 
