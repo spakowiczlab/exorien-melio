@@ -1,0 +1,62 @@
+---
+title: "generate new ra values"
+author: "Caroline Wheeler"
+date: "12/5/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(exoticpackage)
+```
+
+```{r}
+clin <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE) %>%
+  dplyr::rename("sample" = Sample_ID,
+         "IO.responder" = Response) %>%
+  filter(Cancer_Type == "Melanoma") %>%
+  dplyr::select(sample, IO.responder) %>%
+  mutate(Response = ifelse(IO.responder == 0, "Non-Responder", "Responder"))
+
+counts <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_unnormalized-microbes_humanRNAfilt.csv") %>%
+  filter(sample %in% clin$sample)
+
+kraken.met <- read.delim("/fs/ess/PAS1695/exoticpipe/external-data/kraken2-metaphlan-noplants.txt")
+```
+
+get relative abundance by dividing by human
+```{r}
+counts.human <- counts %>%
+  tidyr::gather(-sample, key = "microbe", value = "count") %>%
+  filter(microbe == "Homo.sapiens") %>%
+  select(-microbe) %>%
+  rename(hum.count = count)
+
+counts.ra <- counts %>%
+  tidyr::gather(-sample, key = "microbe", value = "count") %>%
+  dplyr::left_join(counts.human) %>%
+  dplyr::mutate(exo.ra= count/hum.count) %>%
+  dplyr::select(sample, microbe, exo.ra) %>%
+  tidyr::spread(key = "microbe", value = "exo.ra")
+```
+
+save table
+```{r}
+write.csv(counts.ra, "../data/new_relative_abundance.csv")
+write.csv(counts.ra, "/fs/ess/PAS1695/projects/exorien-melio/data/new_relative_abundance.csv")
+```
+
+assign taxonomy 
+```{r}
+kraken.met <- kraken.met %>%
+  rename("Taxonomy" = d__Eukaryota)
+counts.ra.tax <- assign_taxonomy(kraken.met, counts.ra)
+```
+
+save table
+```{r}
+write.csv(counts.ra.tax, "/fs/ess/PAS1695/projects/exorien-melio/data/new_relative_abundance_with_taxonomy.csv")
+```
+
