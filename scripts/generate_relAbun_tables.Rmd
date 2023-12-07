@@ -44,8 +44,8 @@ counts.ra <- counts %>%
 
 save table
 ```{r}
-write.csv(counts.ra, "../data/new_relative_abundance.csv")
-write.csv(counts.ra, "/fs/ess/PAS1695/projects/exorien-melio/data/new_relative_abundance.csv")
+write.csv(counts.ra, "../data/new_relative_abundance.csv", row.names = F)
+write.csv(counts.ra, "/fs/ess/PAS1695/projects/exorien-melio/data/new_relative_abundance.csv", row.names = F)
 ```
 
 assign taxonomy 
@@ -57,6 +57,18 @@ counts.ra.tax <- assign_taxonomy(kraken.met, counts.ra)
 
 save table
 ```{r}
-write.csv(counts.ra.tax, "/fs/ess/PAS1695/projects/exorien-melio/data/new_relative_abundance_with_taxonomy.csv")
+write.csv(counts.ra.tax, "/fs/ess/PAS1695/projects/exorien-melio/data/new_relative_abundance_with_taxonomy.csv", row.names = F)
 ```
 
+save melio counts with taxonomy
+```{r}
+counts.tax <- assign_taxonomy(kraken.met, counts) %>%
+  rename("counts" = exo.ra)
+```
+ 
+ save table
+```{r}
+write.csv(counts.tax, "/fs/ess/PAS1695/projects/exorien-melio/data/humanRNAfilt_counts_with_taxonomy.csv", row.names = F)
+```
+ 
+ 
