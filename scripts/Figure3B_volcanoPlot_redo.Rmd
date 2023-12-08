@@ -17,7 +17,7 @@ library(dplyr)
 
 read in data
 ```{r}
-taxa <- read.csv("/fs/ess/PAS1695/projects/exorien-melio/data/new_relative_abundance_with_taxonomy.csv")
+taxa <- read.csv("/fs/ess/PAS1695/projects/exorien-melio/data/humanRNAfilt_counts_with_taxonomy.csv")
 clin <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE) %>%
   dplyr::rename("sample" = Sample_ID,
          "IO.responder" = Response) %>%
@@ -28,8 +28,7 @@ clin <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", hea
 filter to iorig/exorien overlap and clean up response 
 ```{r}
 taxa <- taxa %>%
-  filter(taxa$sample %in% clin$sample,
-         microbe != "Homo.sapiens")
+  filter(taxa$sample %in% clin$sample)
 
 clin <- clin %>% 
   remove_rownames %>% 
@@ -37,27 +36,44 @@ clin <- clin %>%
   mutate(IO.responder = ifelse(IO.responder == 0, "Non-Responder", "Responder")) 
 ```
 
-# make histogram to evaluate which power of 10 to multiply by
-```{r}
-ggplot(taxa, aes(-log10(exo.ra))) + geom_histogram(binwidth = 0.5)
-ggplot(taxa, aes(-log10(exo.ra*1e9))) + geom_histogram(binwidth = 0.5)
-```
-
+<!-- # make histogram to evaluate which power of 10 to multiply by -->
+<!-- ```{r} -->
+<!-- ggplot(taxa, aes(-log10(exo.ra))) + geom_histogram(binwidth = 0.5) -->
+<!-- ggplot(taxa, aes(-log10(exo.ra*1e9))) + geom_histogram(binwidth = 0.5) -->
+<!-- ``` -->
 
 function to get count tables
 ```{r}
+# write_desd <- function(taxa, lev){
+#   desd <- taxa %>%
+#     dplyr::select("sample", all_of(lev), "exo.ra")
+#   
+#   desd <- desd %>%
+#     mutate(exo.ra = round(exo.ra*1e9)) %>%
+#     group_by(sample, desd[[lev]]) %>%
+#     summarize(exo.ra= sum(exo.ra)) %>%
+#     pivot_wider(names_from = sample, values_from = exo.ra) %>%
+#     column_to_rownames(var = "desd[[lev]]")
+#   
+#   desd[is.na(desd)] <- 0
+#   
+#   return(desd)
+# }
+
 write_desd <- function(taxa, lev){
   desd <- taxa %>%
-    dplyr::select("sample", all_of(lev), "exo.ra")
+    dplyr::select("sample", all_of(lev), "counts")
   
   desd <- desd %>%
-    mutate(exo.ra = round(exo.ra*1e9)) %>%
     group_by(sample, desd[[lev]]) %>%
-    summarize(exo.ra= sum(exo.ra)) %>%
-    pivot_wider(names_from = sample, values_from = exo.ra) %>%
+    summarize(count = sum(counts)) %>%
+    pivot_wider(names_from = sample, values_from = count) %>%
     column_to_rownames(var = "desd[[lev]]")
   
   desd[is.na(desd)] <- 0
+  
+  # add 1 to every value to avoid error with deseq zero values
+  #desd <- desd + 1
   
   return(desd)
 }
@@ -120,50 +136,60 @@ resPlot <- rbind(king_rp, phyl_rp, clas_rp, ord_rp, fam_rp, gen_rp, spec_rp)
 
 save
 ```{r}
-saveRDS(resPlot, "../data/deseqResults_redo.RDS")
+# saveRDS(resPlot, "../data/deseqResults_redo.RDS")
+resPlot <- readRDS("../data/deseqResults_redo.RDS")
 ```
 
 
-# add label to those that pash threshold of alpha = 0.05 adjusted p-value
-```{r}
-resPlot$delabel <- NA
-resPlot <- resPlot %>%
-  mutate(delabel = ifelse(threshold, row.names(resPlot), NA))
-```
-
+# add labels to significant microbes
 ```{r}
 p = 0.05
 low <- -1
 high <- 1
+resPlot$delabel <- NA
+resPlot <- resPlot %>%
+  mutate(delabel = ifelse(pvalue < p & (log2FoldChange < low | log2FoldChange > high), row.names(resPlot), NA))
+```
+
+```{r}
 highlight_df <- resPlot %>% 
-  dplyr::filter(pvalue < p & (log2FoldChange < low | log2FoldChange > high))
+  dplyr::filter(!is.na(delabel))
 ```
 
 label with phylum
 ```{r}
-taxon <- taxa %>%
+taxon.p <- taxa %>%
   select(domain, kingdom, phylum, class, order, family, genus, species) %>%
-  pivot_longer(!phylum, names_to = "Taxonomic Level", values_to = "delabel") %>%
+  pivot_longer(!c(phylum), names_to = "Taxonomic Level", values_to = "delabel") %>%
   distinct()
 
 highlight_df <- highlight_df %>%
-  left_join(taxon) %>%
-  mutate("Taxonomic Grouping" = substr(phylum, 4, nchar(phylum)))
+  left_join(taxon.p) %>%
+  mutate(phylum = substr(phylum, 4, nchar(phylum)),
+        "Taxonomic Grouping" = ifelse(is.na(phylum), substr(delabel, 4, nchar(delabel)), phylum),
+        "Taxonomic Grouping" = ifelse(`Taxonomic Grouping` %in% c("Actinobacteria", "Apicomplexa", "Ascomycota", "Basidiomycota", "Firmicutes", "Proteobacteria", "Uroviricota"), `Taxonomic Grouping`, "Other"))
 
 resPlot <- resPlot %>%
   mutate(delabel = substr(delabel, 4, nchar(delabel)))
 ```
 
 ```{r fig.height=4, fig.width=7}
+highlight_df$`Taxonomic Grouping` <- factor(highlight_df$`Taxonomic Grouping`, levels = c( "Actinobacteria", "Apicomplexa", "Ascomycota", "Basidiomycota", "Firmicutes", "Proteobacteria", "Uroviricota", "Other"))
+
 g <- ggplot(resPlot,aes(x=log2FoldChange, y=-log10(pvalue), label=delabel)) + 
   geom_text_repel() +
   theme(legend.key.size = unit(1, 'cm'), legend.title = element_text(size=7), legend.text = element_text(size=7), axis.text =element_text(size = 7), axis.title=element_text(size=7)) +
   theme_bw(base_size = 7) +
   geom_point(colour="honeydew4") +
   geom_point(data=highlight_df, aes(x=log2FoldChange, y=-log10(pvalue), label=delabel, color = `Taxonomic Grouping`),size=1) +
-  scale_color_manual(values=c("red3", "cyan4", "darkgreen", "darkgoldenrod2", "salmon2", "cornflowerblue", "deeppink4")) +
+  scale_color_manual(values=c("red3", "cyan4", "darkgoldenrod2", "salmon2", "cornflowerblue", "deeppink4", "darkslateblue")) +
   geom_vline(xintercept=c(low, high), linetype="dotted") +
   geom_hline(yintercept=1, linetype="dotted") + 
   theme_bw(base_size = 7) 
 g
 ```
+
+```{r}
+ggsave(plot = g, file = "../figures/fig3_volcano_redo.png", dev = "png", width = 8, height = 4, dpi = 600)
+```
+
