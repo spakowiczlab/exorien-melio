@@ -17,7 +17,10 @@ library(dplyr)
 
 read in data
 ```{r}
+# counts
 taxa <- read.csv("/fs/ess/PAS1695/projects/exorien-melio/data/humanRNAfilt_counts_with_taxonomy.csv")
+# RA
+#ra <- read.csv("/fs/ess/PAS1695/projects/exorien-melio/data/new_relative_abundance_with_taxonomy.csv")
 clin <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE) %>%
   dplyr::rename("sample" = Sample_ID,
          "IO.responder" = Response) %>%
@@ -44,6 +47,8 @@ clin <- clin %>%
 
 function to get count tables
 ```{r}
+# if using RA
+
 # write_desd <- function(taxa, lev){
 #   desd <- taxa %>%
 #     dplyr::select("sample", all_of(lev), "exo.ra")
@@ -59,6 +64,9 @@ function to get count tables
 #   
 #   return(desd)
 # }
+
+
+# if using counts
 
 write_desd <- function(taxa, lev){
   desd <- taxa %>%
@@ -184,12 +192,12 @@ g <- ggplot(resPlot,aes(x=log2FoldChange, y=-log10(pvalue), label=delabel)) +
   geom_point(data=highlight_df, aes(x=log2FoldChange, y=-log10(pvalue), label=delabel, color = `Taxonomic Grouping`),size=1) +
   scale_color_manual(values=c("red3", "cyan4", "darkgoldenrod2", "salmon2", "cornflowerblue", "deeppink4", "darkslateblue")) +
   geom_vline(xintercept=c(low, high), linetype="dotted") +
-  geom_hline(yintercept=1, linetype="dotted") + 
+  geom_hline(yintercept=1.3, linetype="dotted") + 
   theme_bw(base_size = 7) 
 g
 ```
 
 ```{r}
-ggsave(plot = g, file = "../figures/fig3_volcano_redo.png", dev = "png", width = 8, height = 4, dpi = 600)
+ggsave(plot = g, file = "../figures/fig3_volcano_redo.png", dev = "png", width = 10, height = 6, dpi = 600)
 ```
 
