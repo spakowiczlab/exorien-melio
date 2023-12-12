@@ -74,7 +74,7 @@ write_desd <- function(taxa, lev){
   
   desd <- desd %>%
     group_by(sample, desd[[lev]]) %>%
-    summarize(count = sum(counts)) %>%
+    dplyr::summarize(count = sum(counts)) %>%
     pivot_wider(names_from = sample, values_from = count) %>%
     column_to_rownames(var = "desd[[lev]]")
   
@@ -125,6 +125,18 @@ fam <- write_desd(taxa, "family")
 gen <- write_desd(taxa, "genus")
 spec <- write_desd(taxa, "species")
 ```
+
+combine and save microbe counts at all levels
+```{r}
+all.counts <- rbind(dom, king, phyl, class, ord, fam, gen, spec) %>%
+  t()
+
+all.counts <- as.data.frame(all.counts) %>%
+  rownames_to_column(var = "sample")
+
+#write.csv(all.counts, "../data/microbes_redo.csv")
+```
+
 
 run deseq
 ```{r, warning=FALSE}
