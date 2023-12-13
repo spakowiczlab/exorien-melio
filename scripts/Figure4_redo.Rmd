@@ -340,7 +340,9 @@ clustered_plots <- ggarrange(Hall_clust,
                              IOSig_clust,
                              nrow = 3, ncol = 1, common.legend = T)
 
-Combined_Plots <- ggarrange(clustered_plots, Microbe_Effect_Size, ncol = 2)
+Combined_Plots <- ggarrange(clustered_plots, ncol = 1)
 
 Combined_Plots
+
+ggsave("../figures/gene_expression_heatmaps_redo.png", height = 10, width = 8)
 ```

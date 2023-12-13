@@ -214,5 +214,6 @@ g
 
 ```{r}
 ggsave(plot = g, file = "../figures/fig3_volcano_redo.png", dev = "png", width = 10, height = 6, dpi = 600)
+ggsave(plot = g, file = "../figures/fig3_volcano_redo_small.png", dev = "png", width = 4, height = 4, dpi = 600)
 ```
 
