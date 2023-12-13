@@ -13,6 +13,7 @@ library(tidyverse)
 library(ggplot2)
 library(ggrepel)
 library(dplyr)
+library(janitor)
 ```
 
 read in data
@@ -131,10 +132,12 @@ combine and save microbe counts at all levels
 all.counts <- rbind(dom, king, phyl, class, ord, fam, gen, spec) %>%
   t()
 
-all.counts <- as.data.frame(all.counts) %>%
-  rownames_to_column(var = "sample")
+all.counts <- as.data.frame(all.counts) 
 
-#write.csv(all.counts, "../data/microbes_redo.csv")
+colnames(all.counts) <-substr(colnames(all.counts), 4, nchar(colnames(all.counts)))
+names(all.counts) <- gsub(x = names(all.counts), pattern = "\\.", replacement = " ")  
+
+# write.csv(all.counts, "../data/microbes_redo.csv")
 ```
 
 
