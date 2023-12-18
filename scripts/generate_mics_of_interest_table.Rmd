@@ -1,0 +1,68 @@
+---
+title: "assemble mics of interest"
+author: "Caroline Wheeler"
+date: "12/18/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+```
+
+```{r}
+# all tax levels RA
+tax <- read.csv("/fs/ess/PAS1695/projects/exorien-melio/data/new_relative_abundance_with_taxonomy.csv")
+
+# mics of interest 
+deseq <- readRDS("../data/deseqResults_redo.RDS")
+```
+
+tax to long form 
+```{r}
+tax <- tax %>%
+  filter(microbe != "Homo.sapiens") %>%
+  select(-microbe, -Taxonomy)
+
+levs <- c("domain", "kingdom", "phylum", "class", "order", "family", "genus", "species")
+
+tax.long <- data.frame(matrix(ncol = 3, nrow = 0))
+#provide column names
+colnames(tax.long) <- c('sample', 'microbe', 'exo.ra')
+for (lev in levs) {
+  temp <- tax %>%
+    select(sample, all_of(lev) , exo.ra) 
+  
+  colnames(temp)[2] = "microbe"
+  
+  temp <- temp %>%
+    group_by(sample, microbe) %>%
+    summarize(exo.ra = sum(exo.ra)) %>%
+    ungroup()
+  
+  tax.long <- tax.long %>%
+      rbind(temp)
+}
+```
+
+filter to microbes of interest and spread
+```{r}
+deseq <- deseq %>%
+  filter(threshold)
+
+mics <- tax.long %>%
+  filter(microbe %in% rownames(deseq)) %>%
+  mutate(microbe = substr(microbe, 4, nchar(microbe))) %>%
+  spread(microbe, exo.ra)
+```
+
+save
+```{r}
+write.csv(mics, "../data/microbes_of_interest.csv", row.names = FALSE)
+```
+
+
+
+
+
