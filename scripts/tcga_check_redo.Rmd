@@ -1,0 +1,171 @@
+---
+title: "tcga check redo"
+author: "Caroline Wheeler"
+date: "1/5/2024"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(readxl)
+
+install.packages("remotes")
+remotes::install_github("coolbutuseless/ggpattern")
+library(ggpattern)
+```
+
+load data
+```{r}
+resPlot <- readRDS("../data/deseqResults_redo.RDS")
+prev <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/combined_prevalence.csv")
+meta.tcga <- read.csv("/fs/ess/PAS1695/projects/exorien/data/drake-output/2022-03-16/2022-03-16_TCGA_meta.csv")
+meta.orien <- readxl::read_excel("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210707_ClinicalMolLinkage_V4_as-in-drake.xlsx")
+```
+
+clean up data 
+```{r}
+meta.tcga <- meta.tcga %>%
+  select(sample, TCGA.code) %>%
+  mutate(total = nrow(meta.tcga)) %>%
+  group_by(TCGA.code) %>%
+  mutate(cancer.total = n()) %>%
+  ungroup() %>%
+  mutate(source = "TCGA")
+
+meta.orien <- meta.orien %>%
+  mutate(sample = RNASeq) %>%
+  select(sample, TCGA.code) %>%
+  mutate(total = nrow(meta.orien)) %>%
+  group_by(TCGA.code) %>%
+  mutate(cancer.total = n()) %>%
+  ungroup() %>%
+  mutate(source = "ORIEN")
+  
+meta <- rbind(meta.orien, meta.tcga)
+```
+
+<!-- ## TOP 15 SPECIES LEVEL microbes in exorien-melio -->
+<!-- ```{r} -->
+<!-- top.mel <- resPlot %>% -->
+<!--   #filter(level == "species" & !is.na(delabel)) %>% -->
+<!--   slice_min(padj, n=15) -->
+
+<!-- top.mel <- rownames(top.mel) -->
+<!-- ``` -->
+
+<!-- # just in SKCM -->
+<!-- ```{r} -->
+<!-- tcga.cancer <- tcga %>% -->
+<!--   filter(species %in% top.mel) %>% -->
+<!--   group_by(TCGA.code, species, cancer.total) %>% -->
+<!--   summarise(count = sum(prev)) %>% -->
+<!--   filter(TCGA.code == "SKCM") %>% -->
+<!--   mutate(percent = (count / cancer.total)*100) -->
+<!-- ``` -->
+
+<!-- # in all TCGA -->
+<!-- ```{r} -->
+<!-- tcga.all <- tcga %>% -->
+<!--   filter(species %in% top.mel) %>% -->
+<!--   group_by(species) %>% -->
+<!--   summarise(count = sum(prev)) %>% -->
+<!--   mutate(percent = (count / 2720)*100) -->
+<!-- ``` -->
+
+## TOP 15 all levels (excluding unclassified)
+```{r}
+top.mel.all <- resPlot %>%
+  filter(!grepl("unclassified", rownames(resPlot))) %>%
+  slice_min(padj, n=9)
+  
+top.mel.all <- rownames(top.mel.all)
+```
+
+tcga spread out tax levels 
+```{r}
+prev.long <- gather(prev, level, microbe.name, domain:species, factor_key=TRUE) %>%
+  select(sample, microbe.name, prev) %>%
+  group_by(sample, microbe.name) %>%
+  summarize(prev = sum(prev)) %>%
+  mutate(prev = ifelse(prev > 0, 1, 0))
+
+prev.long <- prev.long %>%
+  filter(sample %in% meta$sample) %>%
+  left_join(meta)
+```
+
+```{r}
+# just in SKCM
+mel <- prev.long %>%
+  filter(microbe.name %in% top.mel.all) %>%
+  group_by(TCGA.code, microbe.name, cancer.total, source) %>%
+  summarise(count = sum(prev)) %>%
+  filter(TCGA.code == "SKCM") %>%
+  mutate(percent = (count / cancer.total)*100)
+
+# in all TCGA
+all <- prev.long %>%
+  filter(microbe.name %in% top.mel.all) %>%
+  group_by(microbe.name, source, total) %>%
+  summarise(count = sum(prev)) %>%
+  mutate(percent = (count / total)*100,
+         TCGA.code = "All") 
+
+# combine for plotting
+check <- rbind(mel, all)
+# %>%
+#   mutate(Source = paste0(TCGA.code, " - ", source),
+#          microbe.name = substr(microbe.name, 4, nchar(microbe.name)))
+```
+color grouping
+```{r}
+check <- check %>%
+  mutate(label = case_when(
+    microbe.name == "f__Baculoviridae" ~ "Viruses",
+    microbe.name == "f__Microbacteriaceae" ~ "Actinobacteria",
+    microbe.name == "f__Moraxellaceae" ~ "Proteobacteria",
+    microbe.name == "f__Porphyromonadaceae" ~ "Bacteroidota",
+    microbe.name == "g__Acinetobacter" ~ "Proteobacteria",
+    microbe.name == "o__Micrococcales" ~ "Actinobacteria",
+    microbe.name == "p__Uroviricota" ~ "Viruses",
+    microbe.name == "s__Acinetobacter calcoaceticus" ~ "Proteobacteria",
+    microbe.name == "s__Campylobacter jejuni" ~ "Proteobacteria",
+  )) %>%
+  mutate(Source = paste0(TCGA.code, " - ", source),
+         microbe.name = substr(microbe.name, 4, nchar(microbe.name)))
+  
+```
+
+plot
+```{r}
+p <- check %>%
+  ggplot(aes(x = Source , y = percent, fill=label)) +
+  geom_col(alpha = 0.8, width = 0.85) +
+  #geom_col_pattern(aes(fill=microbe.name, pattern=source, pattern_type=source),colour='black') +
+  scale_y_continuous(expand = c(0, 0.1)) +
+  #scale_pattern_continuous(choices = c("stripe", "crosshatch", "circle")) +
+  scale_fill_manual(values=c("red3","darkslateblue", "cornflowerblue", "deeppink4")) +
+  facet_grid(rows = vars(microbe.name), switch = "y", space = "free_y")  +
+  theme_minimal() +
+  theme(
+    plot.margin = margin(0.5, 0.5, 0.5, 0.5, unit = "cm"),
+    plot.title = element_text(size = 15, face = "bold"),
+    strip.placement = "outside",
+    #strip.text.y = element_text(angle = 0, face = "bold"),
+    strip.text.y.left = element_text(angle = 0, face = "bold"),
+    axis.title.x = element_text(margin = margin(t = 0.5, b = 0.5, unit = "cm")),
+    axis.title.y = element_blank(),
+    axis.text = element_text(size = 10),
+    legend.position = "right",
+    panel.grid.major.y = element_blank(),
+    ) +
+  coord_flip() 
+  
+
+p 
+ggsave(plot = p, "../figures/TCGAcheck_redo.png", height =10, width = 9, device = "png")
+```
+
+
