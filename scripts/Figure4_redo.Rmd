@@ -219,7 +219,7 @@ heat <- temp %>%
   scale_fill_gradient2(low = "#075AFF",
                        mid = "#FFFFCC",
                        high = "#FF0000") +
-  geom_text(data = lab.df, inherit.aes = FALSE, aes(x = as.numeric(x), y = 17, label = labs, angle=ang, hjust=hjust), size=1.2) + 
+  geom_text(data = lab.df, inherit.aes = FALSE, aes(x = as.numeric(x), y = 11, label = labs, angle=ang, hjust=hjust), size=1.2) + 
   ylim(c(-40,35)) +
   xlim(c(0, 150)) +
   theme_void() +
@@ -255,7 +255,7 @@ temp %>%
   scale_fill_gradient2(low = "#075AFF",
                        mid = "#FFFFCC",
                        high = "#FF0000") +
-  geom_text(data = lab.df, inherit.aes = FALSE, aes(x = as.numeric(x), y = 17, label = labs, angle=ang, hjust=hjust), size=1.2) + 
+  geom_text(data = lab.df, inherit.aes = FALSE, aes(x = as.numeric(x), y = 11, label = labs, angle=ang, hjust=hjust), size=1.2) + 
   ylim(c(-40,35)) +
   xlim(c(0, 150)) +
   theme_void() +
@@ -295,7 +295,7 @@ temp %>%
   scale_fill_gradient2(low = "#075AFF",
                        mid = "#FFFFCC",
                        high = "#FF0000") +
-  geom_text(data = lab.df, inherit.aes = FALSE, aes(x = as.numeric(x), y = 17, label = labs, angle=ang, hjust=hjust), size=1.2) + 
+  geom_text(data = lab.df, inherit.aes = FALSE, aes(x = as.numeric(x), y = 11, label = labs, angle=ang, hjust=hjust), size=1.2) + 
   ylim(c(-40,35)) +
   xlim(c(0, 150)) +
   theme_void() +
