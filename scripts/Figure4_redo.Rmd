@@ -64,7 +64,7 @@ Microbe_Effect_Size <- data %>%
 
 Microbe_Effect_Size
 
-# ggsave(Microbe_Effect_Size, filename = "../figures/fig1_effectSize_redo.png", width = 8, height = 6)
+ggsave(Microbe_Effect_Size, filename = "../figures/fig1_effectSize_redo.svg", width = 6, height = 4)
 ```
 
 ### Single single Gene Set Enrichment Analysis ###
@@ -190,7 +190,7 @@ clustHeat <- function(dat, gene_set, microbeDat, microbeOrder, title, x.text){
 }
 
 # Plot the 
-Hall_clust <- clustHeat(Hall_Micro, Hallmark, microbe_data, microbe_order, "Hallmark Gene Sets", x.text = 6)
+Hall_clust <- clustHeat(Hall_Micro, Hallmark, microbe_data, microbe_order, "Hallmark Gene Sets", x.text = 8)
 TIMEx_clust <- clustHeat(TIMEx_Micro, TIMEx, microbe_data, microbe_order, "TIMEx Cell Types", x.text = 8)
 IOSig_clust <- clustHeat(GeneSig_Micro, IOSig_geneset, microbe_data, microbe_order, "IOSig Signatures", x.text = 8)
 ```
@@ -272,10 +272,6 @@ temp <- TIMEx_clust$data
 set gene label angles
 ```{r}
 labs <- c(colnames(TIMEx_clust$plot_env$GS)[TIMEx_clust$plot_env$clust$order]) 
-
-# FOR GRANT VERSION
-#labs <- sub(".*_", "", labs)  
-# END FOR GRANT VERSION
 
 labs.filler <- as.data.frame(cbind(x=1:91, labs=NA))
 lab.df <- as.data.frame(cbind(x = 92:128, labs))
