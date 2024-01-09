@@ -193,16 +193,15 @@ highlight_df <- highlight_df %>%
         "Taxonomic Grouping" = ifelse(`Taxonomic Grouping` %in% c("Actinobacteria", "Apicomplexa", "Ascomycota", "Basidiomycota", "Firmicutes", "Proteobacteria", "Uroviricota"), `Taxonomic Grouping`, "Other"))
 
 resPlot <- resPlot %>%
-  mutate(delabel = substr(delabel, 4, nchar(delabel)))
+  mutate(delabel = ifelse(threshold == TRUE,substr(delabel, 4, nchar(delabel)), NA))
 ```
 
 ```{r fig.height=4, fig.width=7}
 highlight_df$`Taxonomic Grouping` <- factor(highlight_df$`Taxonomic Grouping`, levels = c( "Actinobacteria", "Apicomplexa", "Ascomycota", "Basidiomycota", "Firmicutes", "Proteobacteria", "Uroviricota", "Other"))
 
 g <- ggplot(resPlot,aes(x=log2FoldChange, y=-log10(pvalue), label=delabel)) + 
-  geom_text_repel() +
+  geom_text_repel(size = 2) +
   theme(legend.key.size = unit(1, 'cm'), legend.title = element_text(size=7), legend.text = element_text(size=7), axis.text =element_text(size = 7), axis.title=element_text(size=7)) +
-  theme_bw(base_size = 7) +
   geom_point(colour="honeydew4") +
   geom_point(data=highlight_df, aes(x=log2FoldChange, y=-log10(pvalue), label=delabel, color = `Taxonomic Grouping`),size=1) +
   scale_color_manual(values=c("red3", "cyan4", "darkgoldenrod2", "salmon2", "cornflowerblue", "deeppink4", "darkslateblue")) +
@@ -213,7 +212,7 @@ g
 ```
 
 ```{r}
-ggsave(plot = g, file = "../figures/fig3_volcano_redo.png", dev = "png", width = 10, height = 6, dpi = 600)
-ggsave(plot = g, file = "../figures/fig3_volcano_redo_small.png", dev = "png", width = 4, height = 4, dpi = 600)
+ggsave(plot = g, file = "../figures/fig3_volcano_redo.png", width = 4, height = 4, dpi = 600)
+ggsave(plot = g, file = "../figures/fig3_volcano_redo.svg", width = 4, height = 4, dpi = 600)
 ```
 

@@ -200,7 +200,7 @@ plot <- ggplot(data=aucs, mapping=aes(x=reorder(signature, AUC), y=AUC, col=sign
 
 plot
 
-ggsave(plot = plot, file = "../figures/fig3_diversityAUCboxplots_redo.png", dev = "png", width = 3, height = 4, dpi = 400)
+ggsave(plot = plot, file = "../figures/fig3_diversityAUCboxplots_redo.png", dev = "png", width = 3, height = 3, dpi = 400)
 ```
 
 plot diversity measure strat by response 
@@ -219,12 +219,12 @@ div <- div %>%
 
 ```{r}
 div %>%
-  ggplot(aes(x=response, y=score)) +
+  ggplot(aes(x=response, y=log(score))) +
   geom_boxplot(aes(fill = response)) + 
   facet_wrap(~Signature, scales = "free") + 
   theme_bw(base_size = 7) +
   scale_fill_manual(values=c("cornflowerblue", "deeppink4")) +
-  theme(legend.position = "none") +
+  theme(legend.position = "none") 
 # stat_compare_means(method = "t.test")
 # not significant
 
