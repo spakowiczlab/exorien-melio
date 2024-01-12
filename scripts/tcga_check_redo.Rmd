@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(readxl)
 
-install.packages("remotes")
+#install.packages("remotes")
 remotes::install_github("coolbutuseless/ggpattern")
 library(ggpattern)
 ```
@@ -123,13 +123,13 @@ color grouping
 ```{r}
 check <- check %>%
   mutate(label = case_when(
-    microbe.name == "f__Baculoviridae" ~ "Viruses",
+    microbe.name == "f__Baculoviridae" ~ "Other",
     microbe.name == "f__Microbacteriaceae" ~ "Actinobacteria",
     microbe.name == "f__Moraxellaceae" ~ "Proteobacteria",
-    microbe.name == "f__Porphyromonadaceae" ~ "Bacteroidota",
+    microbe.name == "f__Porphyromonadaceae" ~ "Other",
     microbe.name == "g__Acinetobacter" ~ "Proteobacteria",
     microbe.name == "o__Micrococcales" ~ "Actinobacteria",
-    microbe.name == "p__Uroviricota" ~ "Viruses",
+    microbe.name == "p__Uroviricota" ~ "Uroviricota",
     microbe.name == "s__Acinetobacter calcoaceticus" ~ "Proteobacteria",
     microbe.name == "s__Campylobacter jejuni" ~ "Proteobacteria",
   )) %>%
@@ -140,13 +140,15 @@ check <- check %>%
 
 plot
 ```{r}
+check$label <- factor(check$label , levels = c( "Actinobacteria", "Proteobacteria", "Uroviricota", "Other"))
+
 p <- check %>%
   ggplot(aes(x = Source , y = percent, fill=label)) +
   geom_col(alpha = 0.8, width = 0.85) +
   #geom_col_pattern(aes(fill=microbe.name, pattern=source, pattern_type=source),colour='black') +
   scale_y_continuous(expand = c(0, 0.1)) +
   #scale_pattern_continuous(choices = c("stripe", "crosshatch", "circle")) +
-  scale_fill_manual(values=c("red3","darkslateblue", "cornflowerblue", "deeppink4")) +
+  scale_fill_manual(values=c("red3","cornflowerblue", "deeppink4", "darkslateblue")) +
   facet_grid(rows = vars(microbe.name), switch = "y", space = "free_y")  +
   theme_minimal() +
   theme(
