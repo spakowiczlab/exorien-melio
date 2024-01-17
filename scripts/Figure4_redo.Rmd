@@ -29,6 +29,7 @@ library(Hmisc)
 
 ```{r Load and format required data}
 data <- readRDS("../data/deseqResults_redo.RDS")
+taxa.2 <-read.csv("../data/microbes_of_interest.csv") 
 taxa <- read.csv("/fs/ess/PAS1695/projects/exorien-melio/data/humanRNAfilt_counts_with_taxonomy.csv")
 
 taxa <- taxa %>%
@@ -79,8 +80,9 @@ ggsave(Microbe_Effect_Size, filename = "../figures/fig1_effectSize_redo.svg", wi
 ```{r Load in required data, include=FALSE}
 seq_data <- readr::read_tsv("../data/IO_NOVA_mel_seq.txt")
 clin_data <- readr::read_tsv("../data/IO_NOVA_mel_clin.txt")
-microbe_data <- read.csv("../data/microbes_redo.csv") %>%
-  dplyr::rename("sample" = X)
+# microbe_data <- read.csv("../data/microbes_redo.csv") %>%
+#   dplyr::rename("sample" = X)
+microbe_data <- readr::read_csv("../data/microbes_of_interest.csv") 
 names(microbe_data) <- gsub(x = names(microbe_data), pattern = "\\.", replacement = " ")  
 load("../data/Hallmark.rda")
 load("../data/TIMEx.rda")
