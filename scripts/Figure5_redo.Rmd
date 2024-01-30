@@ -71,14 +71,17 @@ getROC <- function(train, clin.train, test, clin.test){
   pred <- prediction(prediction_for_roc_curve[,2], clin.test$response, label.ordering = c("non-responder", "responder"))
   perf <- performance(pred, "tpr", "fpr")
   
-  auc_ROCR <- performance(pred, measure = "auc")
-  print(auc_ROCR)
-  auc <- auc_ROCR@y.values[[1]]
-  print(auc)
+  # auc_ROCR <- performance(pred, measure = "auc")
+  # print(auc_ROCR)
+  # auc <- auc_ROCR@y.values[[1]]
+  # print(auc)
+  b.auc_ROCR <- performance(pred, "sens", "spec")
+  balanced.auc <- max((b.auc_ROCR@x.values[[1]] + b.auc_ROCR@y.values[[1]]) / 2)
+  print(balanced.auc)
   
   df <- data.frame(FalsePositive=c(perf@x.values[[1]]),
                    TruePositive=c(perf@y.values[[1]]))
-  out <- list(auc, df)
+  out <- list(balanced.auc, df)
   
   return(out)
 }
@@ -202,7 +205,7 @@ Model_Comparison_Plot <- ggplot(Results, aes(x = forcats::fct_relevel(Model, mea
         axis.line = element_line(color = 'black', linewidth = 0.5),
         panel.background = element_rect(fill = 'white')) +
   scale_y_continuous(limits= c(0, 1.35), breaks=seq(0,1, 0.1)) +  # 1.35
-  annotate(geom = "text", x = 3, y = 0.25, label = "Mean AUROC", color = 'black', size = 5) +
+  annotate(geom = "text", x = 3, y = 0.25, label = "Balanced AUROC", color = 'black', size = 5) +
   annotate(geom="text", x=1, y=0.05, label=round(Means[5,2], 3),
             color="black", size=4) +
   annotate(geom="text", x=2, y=0.05, label=round(Means[4,2], 3),
