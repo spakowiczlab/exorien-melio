@@ -302,35 +302,39 @@ temp %>%
 ggsave("../figures/timex_clust_heatmap_redo.pdf", dev = "pdf")
 ```
 
-# ```{R Generate P-Value Matricies}
-# getPvals <- function(dat, gene_set, microbeDat, microbeOrder, gene_set_order){
-#   Cor_Dat <- dat[, -1]
-#   Cor_Dat <- as.matrix(Cor_Dat)
-#   Cor_Dat <- Hmisc::rcorr(Cor_Dat, type = "spearman")
-#   
-#   gs_labels <- names(gene_set)
-# 
-#   Filtered_Dat <- reshape2::melt(Cor_Dat$P) %>%
-#     dplyr::rename(Gene_Set = Var1, Microbe = Var2) %>%
-#     dplyr::filter(Gene_Set %in% gs_labels,
-#                   Microbe %in% colnames(microbeDat)[-1])
-#   
-#   Filtered_Dat$Gene_Set <- stringr::str_remove_all(Filtered_Dat$Gene_Set, "HALLMARK_")
-#   
-#    GS <- tidyr::pivot_wider(Filtered_Dat, names_from = "Gene_Set", values_from = "value")
-#    microbe_names <- GS[, 1]
-#    GS <- as.matrix(GS[, -1]) # -1 to omit microbe name column from matrix
-#    rownames(GS) <- microbe_names$Microbe
-#    
-#    pValueMatrix <- GS[microbeOrder, gene_set_order]
-#    
-#    return(pValueMatrix)
-# }
-# 
-# Hall_PVal <- getPvals(Hall_Micro, Hallmark, microbe_data, microbe_order, gene_set_order = Hall_clust[["plot_env"]][["clust"]][["order"]])
-# TIMEx_PVal <- getPvals(TIMEx_Micro, TIMEx, microbe_data, microbe_order, gene_set_order = TIMEx_clust[["plot_env"]][["clust"]][["order"]])
-# IOSig_PVal <- getPvals(GeneSig_Micro, IOSig_geneset, microbe_data, microbe_order, gene_set_order = IOSig_clust[["plot_env"]][["clust"]][["order"]])
-# ```
+```{R Generate P-Value Matricies}
+getPvals <- function(dat, gene_set, microbeDat, microbeOrder, gene_set_order){
+  Cor_Dat <- dat[, -1]
+  Cor_Dat <- as.matrix(Cor_Dat)
+  Cor_Dat <- Hmisc::rcorr(Cor_Dat, type = "spearman")
+
+  gs_labels <- names(gene_set)
+
+  Filtered_Dat <- reshape2::melt(Cor_Dat$P) %>%
+    dplyr::rename(Gene_Set = Var1, Microbe = Var2) %>%
+    dplyr::filter(Gene_Set %in% gs_labels,
+                  Microbe %in% colnames(microbeDat)[-1])
+
+  Filtered_Dat$Gene_Set <- stringr::str_remove_all(Filtered_Dat$Gene_Set, "HALLMARK_")
+
+   GS <- tidyr::pivot_wider(Filtered_Dat, names_from = "Gene_Set", values_from = "value")
+   microbe_names <- GS[, 1]
+   GS <- as.matrix(GS[, -1]) # -1 to omit microbe name column from matrix
+   rownames(GS) <- microbe_names$Microbe
+
+   pValueMatrix <- GS[microbeOrder, gene_set_order]
+
+   return(pValueMatrix)
+}
+
+Hall_PVal <- getPvals(Hall_Micro, Hallmark, microbe_data, microbe_order, gene_set_order = Hall_clust[["plot_env"]][["clust"]][["order"]])
+TIMEx_PVal <- getPvals(TIMEx_Micro, TIMEx, microbe_data, microbe_order, gene_set_order = TIMEx_clust[["plot_env"]][["clust"]][["order"]])
+IOSig_PVal <- getPvals(GeneSig_Micro, IOSig_geneset, microbe_data, microbe_order, gene_set_order = IOSig_clust[["plot_env"]][["clust"]][["order"]])
+
+write.csv(Hall_PVal, "../data/Hallmark_pvalues.csv", row.names = F)
+write.csv(TIMEx_PVal, "../data/TIMEx_pvalues.csv", row.names = F)
+write.csv(IOSig_PVal, "../data/IOSig_pvalues.csv", row.names = F)
+```
 
 ```{r Combine Plots}
 clustered_plots <- ggarrange(Hall_clust,

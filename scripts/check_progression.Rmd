@@ -1,0 +1,77 @@
+---
+title: "look into RvNR def"
+author: "Caroline Wheeler"
+date: "2024-04-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+```
+
+Do we have Progression? Do we have Stage? Do we have ECOG? Previous medication ?
+We used... OS > 24 months, regardless of OS event?
+
+```{r}
+response <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE) %>%
+  filter(Cancer_Type == "Melanoma") %>%
+  rename("RNASeq" = Sample_ID)
+
+clin <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_ClinicalMolLinkage_V4.csv") %>%
+  filter(RNASeq %in% response$RNASeq) %>%
+  select(ORIENAvatarKey, RNASeq, Primary.Met, SpecimenType, PreservationMethod, Age.At.Specimen.Collection)
+
+io <- readxl::read_xlsx("/fs/ess/PAS1695/projects/exorien/data/MEL_ICB_PFS.xlsx") %>%
+  rename("ORIENAvatarKey" = id) %>%
+  select(ORIENAvatarKey, start, end, medication, "VitalStatus...8", AgeAtLastContact, OS_IO_M, IO) %>%
+  filter(ORIENAvatarKey %in% clin$ORIENAvatarKey)
+
+outcome <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_Outcomes_V4.csv") %>%
+  rename("ORIENAvatarKey" = AvatarKey) %>%
+  select(ORIENAvatarKey, CurrentDiseaseStatus, AgeAtCurrentDiseaseStatus, ProgRecurInd, AgeAtProgRecur, SolidTumorResponse, RecurrenceType, PerformStatusMostRecent, AgeAtPerformStatusMostRecent) %>%
+  filter(ORIENAvatarKey %in% clin$ORIENAvatarKey)
+
+diagnosis <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_Diagnosis_V4.csv") %>%
+  rename("ORIENAvatarKey" = AvatarKey) %>%
+  select(ORIENAvatarKey, AgeAtDiagnosis)
+```
+
+join 
+response, clin, io all have 71, others have duplicates
+```{r}
+all <- response %>%
+  left_join(clin) %>%
+  left_join(io)
+```
+
+
+response category and progression + age at sample collection
+```{r}
+progression <- response %>% 
+  left_join(clin) %>%
+  left_join(outcome) %>%
+  mutate(time = abs(as.double(AgeAtProgRecur)-as.double(Age.At.Specimen.Collection))) %>%
+  group_by(RNASeq, ORIENAvatarKey, OS_Event, OS, Response) %>%
+  #order_by()
+  slice_min(order_by = time, na_rm = T) %>%
+  left_join(diagnosis)
+  
+```
+
+<!-- ```{r} -->
+<!-- vitalstatus <- response %>% -->
+<!--   left_join(link) %>% -->
+<!--   left_join(os) %>% -->
+<!--   select(RNASeq, ORIENAvatarKey, OS_Event, OS, Response, start, end, VitalStatus...8, VitalStatus...11, AgeAtLastContact, OS_IO_Y, OS_IO_M, ) %>% -->
+<!-- ``` -->
+<!-- dead responders -->
+<!-- ```{r} -->
+<!-- d.res <- vitalstatus %>% -->
+<!--   filter(Response == 1, -->
+<!--          VitalStatus...8 == "Dead") -->
+<!-- ``` -->
+
+
+
