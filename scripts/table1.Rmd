@@ -171,6 +171,7 @@ linewidth =1.5, color="black", size_x=3, size_xend = 3, colour_x = "red3", colou
 
 g
 ```
+
 ```{r}
 ggsave(plot = g, "../figures/io_start_timeline.png", width = 3, height = 8, dev = "png", dpi = 600)
 ```

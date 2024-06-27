@@ -188,63 +188,6 @@ Means$Model <- factor(Means$Model, levels = unique(Means$Model))
 mean_order <- rev(levels(Means$Model))
 ```
 
-```{r Plot Generation}
-Model_Comparison_Plot <- ggplot(Results, aes(x = forcats::fct_relevel(Model, mean_order), y = AUROC, color = Model)) +
-  geom_boxplot(outlier.colour = NA, fatten = NULL) + 
-  geom_jitter() +
-  labs(y = "AUROC", x = "Model", title = "Random Forest AUROC Model Comparison") +
-  theme(axis.title = element_text(face = 'bold', size = '16'),
-        axis.text.x = element_text(size = 10, face = 'bold'),
-        plot.title = element_text(face = 'bold', hjust = 0.5, size = 14),
-        axis.title.y = element_text(hjust = 0.45),
-        legend.position = "bottom",
-        axis.line = element_line(color = 'black', linewidth = 0.5),
-        panel.background = element_rect(fill = 'white')) +
-  scale_y_continuous(limits= c(0, 1.35), breaks=seq(0,1, 0.1)) +  # 1.35
-  annotate(geom = "text", x = 3, y = 0.25, label = "Mean AUROC", color = 'black', size = 5) +
-  annotate(geom="text", x=1, y=0.05, label=round(Means[5,2], 3),
-            color="black", size=4) +
-  annotate(geom="text", x=2, y=0.05, label=round(Means[4,2], 3),
-            color="black", size=4) +
-  annotate(geom="text", x=3, y=0.05, label=round(Means[3,2], 3),
-            color="black", size=4) +
-  annotate(geom="text", x=4, y=0.05, label=round(Means[2,2], 3),
-            color="black", size=4) +
-  annotate(geom="text", x=5, y=0.05, label=round(Means[1,2], 3),
-            color="black", size=4)
-
-# model_comparison <- list(
-#   c("Imm_Act_Z_Microbe", "GeneSig_Z_Microbe"),
-#   c("Imm_Act_Z_Microbe", "Imm_Act_Z_Score"),
-#   c("Imm_Act_Z_Microbe", "GeneSig_Z_Score"),
-#   c("Imm_Act_Z_Microbe", "Microbe"),
-#   c("GeneSig_Z_Microbe", "Imm_Act_Z_Score"),
-#   c("GeneSig_Z_Microbe", "GeneSig_Z_Score"),
-#   c("GeneSig_Z_Microbe", "Microbe"),
-#   c("Imm_Act_Z_Score", "GeneSig_Z_Score"),
-#   c("Imm_Act_Z_Score", "Microbe"),
-#   c("GeneSig_Z_Score", "Microbe")
-# )
-
-significant_comparisons <- list(
-  c("Microbe", "Imm_Act_Z_Score"),
-  c("Microbe", "GeneSig_Z_Microbe"),
-  c("Microbe", "Imm_Act_Z_Microbe"),
-  c("GeneSig_Z_Score", "Imm_Act_Z_Microbe")
-)
-
-Model_Comparison_Plot <- Model_Comparison_Plot +
-     ggpubr::stat_compare_means(comparisons = significant_comparisons, 
-                                label = 'p.signif', 
-                                label.y = seq(0.95, by = 0.1, length.out = 4)) + 
-  stat_summary(geom = "errorbar", fun.min = mean, fun = mean, fun.max = mean, width = .75)
-
-
-Model_Comparison_Plot
-
-```
-
-
 # NCI R01 version 
 ```{r}
 grant.ver <- Results %>%
@@ -281,5 +224,3 @@ Model_Comparison_Plot
 
 ggsave(Model_Comparison_Plot, file = "../figures/grantVersion_AUCboxplots.svg", dev = "svg", width = 3, height = 3, dpi = 600)
 ```
-
-

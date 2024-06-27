@@ -161,6 +161,12 @@ save
 ```{r}
 # saveRDS(resPlot, "../data/deseqResults_redo.RDS")
 resPlot <- readRDS("../data/deseqResults_redo.RDS")
+
+# save as CSV for supplement
+resplot.csv <- resPlot %>%
+  rownames_to_column("microbe") %>%
+  arrange(padj)
+write.csv(resplot.csv, "../data/Supplementary_Table_3.csv", row.names = F)
 ```
 
 

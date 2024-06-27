@@ -1,0 +1,38 @@
+---
+title: "check_treatment"
+author: "Caroline Wheeler"
+date: "2024-04-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+io <- readxl::read_xlsx("/fs/ess/PAS1695/projects/exorien/data/MEL_ICB_PFS.xlsx")
+
+response <- read.table("/fs/ess/PAS1695/projects/exorien/data/IO_NOVA_clin.txt", header = TRUE) %>%
+  filter(Cancer_Type == "Melanoma") %>%
+  rename("RNASeq" = Sample_ID)
+
+clin <- read.csv("/fs/ess/PAS1695/projects/exorien/data/clinical/20PRJ060OSU_20210712_ClinicalMolLinkage_V4.csv") %>%
+  filter(Disease.Type == "CUT - Melanoma") %>%
+  select(ORIENAvatarKey, RNASeq, Age.At.Specimen.Collection)
+```
+
+```{r}
+io <- io %>%
+  rename("ORIENAvatarKey" = id) %>%
+  select(ORIENAvatarKey, medication, OS_IO_M) %>%
+  rename("IO" = medication,
+         "OS" = OS_IO_M)
+```
+
+
+```{r}
+response <- response %>%
+  left_join(clin) %>%
+  left_join(io)
+```
+
